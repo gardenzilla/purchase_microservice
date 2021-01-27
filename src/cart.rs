@@ -322,13 +322,13 @@ impl CartMethods for Cart {
       UplKind::Sku { sku, piece } => {
         // Add to unique UPLs
         if upl.depreciated {
-          self.upls_unique.push(upl);
+          self.upls_unique.push(upl.clone());
         } else {
-          self.upls_sku.push(upl);
+          self.upls_sku.push(upl.clone());
         }
       }
       // Add to unique UPLs
-      UplKind::DerivedProduct { product_id, amount } => self.upls_unique.push(upl),
+      UplKind::DerivedProduct { product_id, amount } => self.upls_unique.push(upl.clone()),
     }
 
     // Add it as a SKU if a normal SKU
@@ -344,9 +344,9 @@ impl CartMethods for Cart {
         // Add it as a new SKU otherwise
         self.shopping_list.push(ListItem::new(
           sku,
-          upl.name,
+          upl.name.clone(),
           piece,
-          upl.vat,
+          upl.vat.clone(),
           upl.retail_net_price,
           upl.retail_gross_price,
         ));

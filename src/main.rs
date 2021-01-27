@@ -6,8 +6,9 @@ use gzlib::proto::purchase::{
 use packman::*;
 use prelude::*;
 use proto::purchase::{
-  CartAddCustomerReuqest, CartAddSkuRequest, CartAddUplRequest, CartIds, CartInfoObject,
-  CartObject, CartRemoveCustomerRequest, CartRemoveSkuRequest, PurchaseInfoObject,
+  cart_object, CartAddCustomerReuqest, CartAddPaymentRequest, CartAddSkuRequest, CartAddUplRequest,
+  CartIds, CartInfoObject, CartObject, CartRemoveCustomerRequest, CartRemoveSkuRequest,
+  CartRemoveUplRequest, CartSetPaymentRequest, CartSetSkuPieceRequest, PurchaseInfoObject,
 };
 use std::error::Error;
 use std::path::PathBuf;
@@ -116,7 +117,9 @@ impl PurchaseService {
       .add_customer(Some(cart::Customer {
         id: r.customer_id,
         name: r.customer_name,
-        address: r.customer_address,
+        zip: r.customer_zip,
+        location: r.customer_location,
+        street: r.customer_street,
         tax_number: r.tax_number,
       }))
       .clone();
@@ -171,17 +174,34 @@ impl PurchaseService {
   }
 
   async fn cart_add_upl(&self, r: CartAddUplRequest) -> ServiceResult<CartObject> {
+    let u = r
+      .upl
+      .ok_or(ServiceError::internal_error("Missing UPL object!"))?;
+
     let new_upl_info_object = cart::UplInfoObject {
-      upl_id: r.,
-      kind: (),
-      name: (),
-      unit: (),
-      retail_net_price: (),
-      vat: (),
-      retail_gross_price: (),
-      procurement_net_price: (),
-      best_before: (),
-      depreciated: (),
+      upl_id: u.upl_id,
+      kind: match u
+        .upl_kind
+        .ok_or(ServiceError::internal_error("Missing KIND!"))?
+      {
+        proto::purchase::upl_info_object::UplKind::Sku(s) => cart::UplKind::Sku {
+          sku: s.sku,
+          piece: s.piece,
+        },
+        proto::purchase::upl_info_object::UplKind::OpenedSku(os) => cart::UplKind::DerivedProduct {
+          product_id: os.product_id,
+          amount: os.amount,
+        },
+      },
+      name: u.name,
+      retail_net_price: u.retail_net_price,
+      vat: u.vat,
+      retail_gross_price: u.retail_gross_price,
+      procurement_net_price: u.procurement_net_price,
+      best_before: DateTime::parse_from_rfc3339(&u.best_before)
+        .map_err(|_| ServiceError::internal_error("A megadott dátum hibás"))?
+        .with_timezone(&Utc),
+      depreciated: u.depreciated,
     };
     let res = self
       .carts
@@ -191,6 +211,72 @@ impl PurchaseService {
       .as_mut()
       .unpack()
       .add_upl(new_upl_info_object)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_remove_upl(&self, r: CartRemoveUplRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id)?)?
+      .as_mut()
+      .unpack()
+      .remove_upl(r.upl_id)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_set_payment(&self, r: CartSetPaymentRequest) -> ServiceResult<CartObject> {
+    let p: proto::purchase::PaymentKind = proto::purchase::PaymentKind::from_i32(r.payment_kind)
+      .ok_or(ServiceError::internal_error("PaymentKind decode error"))?;
+
+    let payment = match p {
+      proto::purchase::PaymentKind::Cash => cart::PaymentKind::Cash,
+      proto::purchase::PaymentKind::Card => cart::PaymentKind::Card,
+      proto::purchase::PaymentKind::Transfer => cart::PaymentKind::Transfer,
+    };
+
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id)?)?
+      .as_mut()
+      .unpack()
+      .set_payment(payment)
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_add_payment(&self, r: CartAddPaymentRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id)?)?
+      .as_mut()
+      .unpack()
+      .add_payment(cart::Payment {
+        payment_id: r.payment_id,
+        amount: r.amount,
+      })
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_set_sku_piece(&self, r: CartSetSkuPieceRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id)?)?
+      .as_mut()
+      .unpack()
+      .set_sku_piece(r.sku, r.piece)
       .map_err(|e| ServiceError::bad_request(&e))?
       .clone();
     Ok(res.into())
@@ -270,6 +356,14 @@ impl Purchase for PurchaseService {
     Ok(Response::new(res))
   }
 
+  async fn cart_set_sku_piece(
+    &self,
+    request: Request<proto::purchase::CartSetSkuPieceRequest>,
+  ) -> Result<Response<CartObject>, Status> {
+    let res = self.cart_set_sku_piece(request.into_inner()).await?;
+    Ok(Response::new(res))
+  }
+
   async fn cart_remove_sku(
     &self,
     request: Request<proto::purchase::CartRemoveSkuRequest>,
@@ -282,14 +376,16 @@ impl Purchase for PurchaseService {
     &self,
     request: Request<proto::purchase::CartAddUplRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_add_upl(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_remove_upl(
     &self,
     request: Request<proto::purchase::CartRemoveUplRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_remove_upl(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_set_document(
@@ -303,14 +399,16 @@ impl Purchase for PurchaseService {
     &self,
     request: Request<proto::purchase::CartSetPaymentRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_set_payment(request.into_inner()).await?;
+    Ok(Response::new(res.into()))
   }
 
   async fn cart_add_payment(
     &self,
     request: Request<proto::purchase::CartAddPaymentRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_add_payment(request.into_inner()).await?;
+    Ok(Response::new(res.into()))
   }
 
   async fn cart_set_owner(
@@ -391,13 +489,6 @@ impl Purchase for PurchaseService {
   ) -> Result<Response<proto::purchase::PurchaseStatResponse>, Status> {
     todo!()
   }
-
-  async fn cart_set_sku_piece(
-      &self,
-      request: Request<proto::purchase::CartSetSkuPieceRequest>,
-    ) -> Result<Response<CartObject>, Status> {
-        todo!()
-    }
 }
 
 #[tokio::main]

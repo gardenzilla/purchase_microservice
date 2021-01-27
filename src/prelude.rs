@@ -328,14 +328,14 @@ impl From<cart::Cart> for purchase::Purchase {
 
     Self {
       id: f.id,
-      customer: match f.customer {
+      customer: match &f.customer {
         Some(c) => Some(purchase::Customer {
           id: c.id,
-          name: c.name,
-          zip: c.zip,
-          location: c.location,
-          street: c.street,
-          tax_number: c.tax_number,
+          name: c.name.to_string(),
+          zip: c.zip.to_string(),
+          location: c.location.to_string(),
+          street: c.street.to_string(),
+          tax_number: c.tax_number.to_string(),
         }),
         None => None,
       },
