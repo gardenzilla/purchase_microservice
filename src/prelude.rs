@@ -1,10 +1,13 @@
 use gzlib::proto::purchase::{
-  cart_object, purchase_object, upl_info_object, CartInfoObject, CartObject, Customer, Payment,
-  PaymentKind, UplInfoObject,
+  cart_object, upl_info_object, CartInfoObject, CartObject, Customer, Payment, PaymentKind,
+  UplInfoObject,
 };
 use upl_info_object::{UplKindOpenedSku, UplKindSku};
 
-use crate::cart::{self, CartMethods};
+use crate::{
+  cart::{self, CartMethods},
+  purchase,
+};
 
 pub enum ServiceError {
   InternalError(String),
@@ -203,6 +206,100 @@ impl From<crate::cart::Cart> for CartObject {
       store_id: f.store_id.unwrap_or(0), // 0 means no store
       created_by: f.created_by,
       created_at: f.created_at.to_rfc3339(),
+    }
+  }
+}
+
+impl From<cart::Cart> for purchase::Purchase {
+  fn from(f: cart::Cart) -> Self {
+    Self {
+      id: f.id,
+      customer: match f.customer {
+        Some(c) => Some(purchase::Customer {
+          id: c.id,
+          name: c.name,
+          address: c.address,
+          tax_number: c.tax_number,
+        }),
+        None => None,
+      },
+      items: f
+        .items
+        .iter()
+        .map(|i| purchase::Item {
+          kind: match &i.kind {
+            cart::ItemKind::Sku { sku } => purchase::ItemKind::Sku { sku: *sku },
+            cart::ItemKind::SkuDepreciated { upl_id } => purchase::ItemKind::SkuDepreciated {
+              upl_id: upl_id.to_string(),
+            },
+            cart::ItemKind::DerivedProduct {
+              upl_id,
+              amount,
+              unit,
+            } => purchase::ItemKind::DerivedProduct {
+              upl_id: upl_id.to_string(),
+              amount: *amount,
+              unit: unit.to_string(),
+            },
+          },
+          name: i.name.to_string(),
+          piece: i.piece,
+          retail_price_net: i.retail_price_net,
+          vat: i.vat.to_string(),
+          retail_price_gross: i.retail_price_gross,
+          total_retail_price_net: i.total_retail_price_net,
+          total_retail_price_gross: i.total_retail_price_gross,
+          upl_ids: i.upl_ids.clone(),
+        })
+        .collect(),
+      upl_info_objects: f
+        .upl_info_objects
+        .iter()
+        .map(|u| purchase::UplInfoObject {
+          upl_id: u.upl_id.to_string(),
+          kind: match u.kind {
+            cart::UplKind::Sku { sku, piece } => purchase::UplKind::Sku { sku, piece },
+            cart::UplKind::DerivedProduct { product_id, amount } => {
+              purchase::UplKind::DerivedProduct { product_id, amount }
+            }
+          },
+          name: u.name.to_string(),
+          unit: u.unit.to_string(),
+          retail_net_price: u.retail_net_price,
+          vat: u.vat.to_string(),
+          retail_gross_price: u.retail_gross_price,
+          procurement_net_price: u.procurement_net_price,
+          best_before: u.best_before,
+          depreciated: u.depreciated,
+        })
+        .collect(),
+      total_net: f.total_net,
+      total_vat: f.total_vat,
+      total_gross: f.total_gross,
+      document_kind: match f.document_kind {
+        cart::DocumentKind::Receipt => purchase::DocumentKind::Receipt,
+        cart::DocumentKind::Invoice => purchase::DocumentKind::Invoice,
+      },
+      payment_kind: match f.payment_kind {
+        cart::PaymentKind::Cash => purchase::PaymentKind::Cash,
+        cart::PaymentKind::Card => purchase::PaymentKind::Card,
+        cart::PaymentKind::Transfer { payment_duedate } => {
+          purchase::PaymentKind::Transfer { payment_duedate }
+        }
+      },
+      payments: f
+        .payments
+        .iter()
+        .map(|p| purchase::Payment {
+          payment_id: p.payment_id.to_string(),
+          amount: p.amount,
+        })
+        .collect(),
+      owner_uid: f.owner_uid,
+      store_id: f.store_id,
+      restored: None,
+      created_by: f.created_by,
+      created_at: f.created_at,
     }
   }
 }

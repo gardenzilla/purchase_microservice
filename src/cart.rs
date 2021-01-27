@@ -46,6 +46,8 @@ where
   fn get_balance(&self) -> i32;
   /// Get cart current profit
   fn get_profit_net(&self) -> i32;
+  // Recalculate totals
+  fn calculate_totals(&mut self);
   /// Close cart.sum::<i32>()
   /// If
   ///   SKU / UPL ok
@@ -146,6 +148,8 @@ impl CartMethods for Cart {
           // Set item piece to the new value
           // Overwrite it
           item.set_new_piece(piece);
+          // Recalculate totals
+          self.calculate_totals();
           // Return self ref
           return self;
         }
@@ -163,6 +167,9 @@ impl CartMethods for Cart {
       vat,
       unit_retail_price_gross,
     ));
+
+    // Recalculate totals
+    self.calculate_totals();
 
     // Return self ref
     self
@@ -188,6 +195,10 @@ impl CartMethods for Cart {
     // Remove SKU if empty
     if sku_is_empty {
       self.items.remove(sku_position);
+      // Recalculate totals
+      self.calculate_totals();
+      // Return self ref
+      return Ok(self);
     }
 
     // Otherwise return Error
@@ -225,6 +236,8 @@ impl CartMethods for Cart {
             upl.vat.clone(),
             upl.retail_gross_price,
           ));
+          // Recalculate totals
+          self.calculate_totals();
           // Return self ref
           return Ok(self);
         }
@@ -246,6 +259,8 @@ impl CartMethods for Cart {
           upl.vat.clone(),
           upl.retail_gross_price,
         ));
+        // Recalculate totals
+        self.calculate_totals();
         // Return self ref
         return Ok(self);
       }
@@ -277,6 +292,8 @@ impl CartMethods for Cart {
             ritem.upl_ids.retain(|uid| uid != &upl.upl_id);
             // Add upl_id as related id
             ritem.upl_ids.push(upl.upl_id.clone());
+            // Recalculate totals
+            self.calculate_totals();
             // Return self ref
             return Ok(self);
           }
@@ -293,6 +310,8 @@ impl CartMethods for Cart {
             upl.vat.clone(),
             upl.retail_gross_price,
           ));
+          // Recalculate totals
+          self.calculate_totals();
           // Return self ref
           return Ok(self);
         }
@@ -302,6 +321,9 @@ impl CartMethods for Cart {
     // if we are here, then its an error
     // Roll back UPL in
     self.upl_info_objects.retain(|uo| &uo.upl_id != &upl.upl_id);
+
+    // Recalculate totals
+    self.calculate_totals();
 
     // and return an error
     Err("Kritikus hiba! A kért UPL nem tehető be a kosárba!".to_string())
@@ -315,6 +337,12 @@ impl CartMethods for Cart {
       .position(|u| u.upl_id == upl_id)
       .ok_or("A kért UPL nem szerepel a kosárban!".to_string())?;
 
+    let upl_obj = self
+      .upl_info_objects
+      .iter()
+      .find(|u| u.upl_id == upl_id)
+      .ok_or("A kért UPL nem szerepel a kosárban!".to_string())?;
+
     // Remove UPL from SKU
     // Iterate over all items
     for item in &mut self.items {
@@ -322,11 +350,25 @@ impl CartMethods for Cart {
       if item.upl_ids.contains(&upl_id) {
         // Remove UPL ID from upl_ids
         item.upl_ids.retain(|i| i != &upl_id);
+        // Reset Item totals
+        item.set_new_piece(
+          item.piece
+            - match upl_obj.kind {
+              UplKind::Sku { sku: _, piece } => piece,
+              UplKind::DerivedProduct {
+                product_id: _,
+                amount: _,
+              } => 1,
+            },
+        );
       }
     }
 
     // Remove UPL from UPL info object vector
     self.upl_info_objects.remove(upl_position);
+
+    // Recalculate totals
+    self.calculate_totals();
 
     Ok(self)
   }
@@ -408,6 +450,23 @@ impl CartMethods for Cart {
     }
 
     Ok(self)
+  }
+
+  fn calculate_totals(&mut self) {
+    // Set new total net
+    self.total_net = self
+      .items
+      .iter()
+      .map(|i| i.total_retail_price_net)
+      .sum::<u32>();
+    // Set new total gross
+    self.total_gross = self
+      .items
+      .iter()
+      .map(|i| i.total_retail_price_gross)
+      .sum::<u32>();
+    // Set new total VAT
+    self.total_vat = self.total_gross - self.total_net;
   }
 }
 
