@@ -24,8 +24,10 @@ where
     unit_retail_price_net: u32,
     unit_retail_price_gross: u32,
   ) -> &Self;
-  // Try to remove SKU
+  /// Try to remove SKU
   fn remove_sku(&mut self, sku: u32) -> Result<&Self, String>;
+  /// Try to update SKU piece in shopping list
+  fn set_sku_piece(&mut self, sku: u32, piece: u32) -> Result<&Self, String>;
   /// Try to add UPL to cart
   fn add_upl(&mut self, upl: UplInfoObject) -> Result<&Self, String>;
   /// Try to remove UPL from cart
@@ -57,21 +59,25 @@ where
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Cart {
-  pub ancestor: Option<Uuid>,               // If this is a restored Cart
-  pub id: Uuid,                             // Cart ID UUID?
-  pub customer: Option<Customer>,           // Only if there is any related one
-  pub items: Vec<Item>,                     // Cart items
-  pub upl_info_objects: Vec<UplInfoObject>, // Related UPL info objects
-  pub total_net: u32,                       // Total cart net value in HUF
-  pub total_vat: u32,                       // Total VAT
-  pub total_gross: u32,                     // Total cart gross value in HUF
-  pub document_kind: DocumentKind,          // Receipt or Invoice
-  pub payment_kind: PaymentKind,            // cash, transfer, card
-  pub payments: Vec<Payment>,               // Payment vector
-  pub owner_uid: u32,                       // Shop assistant UID
-  pub store_id: Option<u32>,                // Now its stock ID
-  pub created_by: u32,                      // UID
-  pub created_at: DateTime<Utc>,            // When cart created
+  pub ancestor: Option<Uuid>,           // If this is a restored Cart
+  pub id: Uuid,                         // Cart ID UUID?
+  pub customer: Option<Customer>,       // Only if there is any related one
+  pub discount_percentage: Option<u32>, // Discount in percentage 20% => 20
+  pub shopping_list: Vec<ListItem>,     // Shopping list
+  pub upls_sku: Vec<UplInfoObject>,     // UPLs that are healty
+  pub upls_unique: Vec<UplInfoObject>,  // Upls that are depreciated or opened
+  pub total_net: u32,                   // Total cart net value in HUF
+  pub total_vat: u32,                   // Total VAT
+  pub total_gross: u32,                 // Total cart gross value in HUF
+  pub document_kind: DocumentKind,      // Receipt or Invoice
+  pub payment_kind: PaymentKind,        // cash, transfer, card
+  pub payments: Vec<Payment>,           // Payment vector
+  pub owner_uid: u32,                   // Shop assistant UID
+  pub store_id: Option<u32>,            // Now its stock ID
+  pub date_completion: DateTime<Utc>,   // Invoice Completion date
+  pub payment_duedate: DateTime<Utc>,   // Invoice Payment duedate
+  pub created_by: u32,                  // UID
+  pub created_at: DateTime<Utc>,        // When cart created
 }
 
 impl Default for Cart {
@@ -80,18 +86,97 @@ impl Default for Cart {
       ancestor: None,
       id: Uuid::default(),
       customer: None,
-      items: Vec::new(),
-      upl_info_objects: Vec::new(),
+      discount_percentage: None,
+      shopping_list: Vec::new(),
+      upls_sku: Vec::new(),
+      upls_unique: Vec::new(),
       total_net: 0,
       total_vat: 0,
       total_gross: 0,
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
-      payments: Vec::new(),
+      payments: Vec::default(),
       owner_uid: 0,
       store_id: None,
+      date_completion: Utc::today().and_hms(0, 0, 0),
+      payment_duedate: Utc::today().and_hms(0, 0, 0),
       created_by: 0,
       created_at: Utc::now(),
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ListItem {
+  pub sku: u32,
+  pub name: String,
+  pub piece: u32,
+  pub vat: String,
+  pub unit_price_net: u32,
+  pub unit_price_vat: u32,
+  pub unit_price_gross: u32,
+  pub total_price_net: u32,
+  pub total_price_vat: u32,
+  pub total_price_gross: u32,
+}
+
+impl ListItem {
+  fn new(
+    sku: u32,
+    name: String,
+    piece: u32,
+    vat: String,
+    unit_price_net: u32,
+    unit_price_gross: u32,
+  ) -> Self {
+    let total_net = unit_price_net * piece;
+    let total_gross = unit_price_gross * piece;
+    Self {
+      sku,
+      name,
+      piece,
+      vat,
+      unit_price_net,
+      unit_price_vat: unit_price_gross - unit_price_net,
+      unit_price_gross,
+      total_price_net: total_net,
+      total_price_vat: total_gross - total_net,
+      total_price_gross: total_gross,
+    }
+  }
+  // Update piece by replacing it
+  fn update_piece(&mut self, piece: u32) -> &Self {
+    // Update piece
+    self.piece = piece;
+    // Update total net
+    self.total_price_net = self.unit_price_net * piece;
+    // Update total gross
+    self.total_price_gross = self.unit_price_gross * piece;
+    // Update total VAT
+    self.total_price_vat = self.total_price_gross - self.total_price_net;
+    // Return self ref
+    self
+  }
+  // Update piece by adding new ones
+  fn update_add_piece(&mut self, plus_piece: u32) -> &Self {
+    self.update_piece(self.piece + plus_piece);
+    self
+  }
+}
+
+impl Default for ListItem {
+  fn default() -> Self {
+    Self {
+      sku: 0,
+      name: String::new(),
+      piece: 0,
+      vat: String::new(),
+      unit_price_net: 0,
+      unit_price_vat: 0,
+      unit_price_gross: 0,
+      total_price_net: 0,
+      total_price_vat: 0,
+      total_price_gross: 0,
     }
   }
 }
@@ -110,17 +195,21 @@ impl CartMethods for Cart {
       ancestor: None,
       id: Uuid::new_v4(),
       customer: None,
-      items: Vec::new(),
-      upl_info_objects: Vec::new(),
+      discount_percentage: None,
+      shopping_list: Vec::default(),
+      upls_sku: Vec::default(),
+      upls_unique: Vec::default(),
       total_net: 0,
       total_vat: 0,
       total_gross: 0,
       document_kind: DocumentKind::Receipt,
       payment_kind: PaymentKind::Cash,
-      payments: Vec::new(),
-      owner_uid: owner_uid,
-      store_id: store_id,
-      created_by: created_by,
+      payments: Vec::default(),
+      owner_uid,
+      store_id,
+      date_completion: Utc::today().and_hms(0, 0, 0),
+      payment_duedate: Utc::today().and_hms(0, 0, 0),
+      created_by,
       created_at: Utc::now(),
     }
   }
@@ -132,244 +221,150 @@ impl CartMethods for Cart {
 
   fn add_sku(
     &mut self,
-    _sku: u32,
+    sku: u32,
     piece: u32,
     name: String,
     vat: String,
     unit_retail_price_net: u32,
     unit_retail_price_gross: u32,
   ) -> &Self {
-    // Check if the required SKU already in the cart items
-    for item in &mut self.items {
-      // If item is SKU
-      if let ItemKind::Sku { sku } = item.kind {
-        // If sku is the needed one
-        if sku == _sku {
-          // Set item piece to the new value
-          // Overwrite it
-          item.set_new_piece(piece);
-          // Recalculate totals
-          self.calculate_totals();
-          // Return self ref
-          return self;
-        }
-      }
-    }
+    // Try to find sku in shopping list
+    let pos = self.shopping_list.iter().position(|i| i.sku == sku);
 
-    // We havent found SKU in the list yet
-    // lets add it
-    self.items.push(Item::new(
-      // Here we can only create ItemKind::Sku {_}
-      ItemKind::Sku { sku: _sku },
+    let new_sku = ListItem::new(
+      sku,
       name,
       piece,
-      unit_retail_price_net,
       vat,
+      unit_retail_price_net,
       unit_retail_price_gross,
-    ));
+    );
 
-    // Recalculate totals
+    match pos {
+      // If we found it, lets update it
+      Some(p) => {
+        if let Some(mut item) = self.shopping_list.get_mut(p) {
+          *item = new_sku;
+        }
+      }
+      // Othwise lets push it
+      None => self.shopping_list.push(new_sku),
+    }
+
+    // Recalculate cart totals
     self.calculate_totals();
 
-    // Return self ref
     self
   }
 
-  fn remove_sku(&mut self, _sku: u32) -> Result<&Self, String> {
-    // Try to find SKU
-    let sku_position = self
-      .items
+  fn remove_sku(&mut self, sku: u32) -> Result<&Self, String> {
+    // Check if there is any sku in upls
+    if self
+      .upls_sku
       .iter()
-      .position(|i| match i.kind {
-        ItemKind::Sku { sku } => sku == _sku,
-        _ => false,
+      .filter(|u| {
+        if let Some(_sku) = u.get_sku() {
+          return _sku == sku;
+        }
+        false
       })
-      .ok_or("A kért SKU nem szerepel a kosárban, vagy bontott, vagy egyedi termék".to_string())?;
-
-    // Check if SKU empty
-    let sku_is_empty = match self.items.get(sku_position) {
-      Some(s) => s.upl_ids.len() == 0,
-      None => false,
-    };
-
-    // Remove SKU if empty
-    if sku_is_empty {
-      self.items.remove(sku_position);
-      // Recalculate totals
-      self.calculate_totals();
-      // Return self ref
-      return Ok(self);
+      .count()
+      > 0
+    {
+      return Err("Az adott SKU-hoz még van UPL a kosárban!".to_string());
     }
 
-    // Otherwise return Error
-    Err("A kért SKU nem üres! Törölj belőle minden UPL-t!".to_string())
+    // Remove from shopping_list
+    self.shopping_list.retain(|i| i.sku != sku);
+
+    self.calculate_totals();
+
+    Ok(self)
   }
 
-  fn add_upl(&mut self, upl: UplInfoObject) -> Result<&Self, String> {
-    // Check if we already have this UPL in UPL Info Objects
-    match self
-      .upl_info_objects
-      .iter()
-      .find(|u| u.upl_id == upl.upl_id)
-    {
-      Some(_) => return Err("A kért UPL már szerepel a kosárban!".to_string()),
-      None => (),
-    }
-
-    // Add UPL to Upl Info Objects
-    self.upl_info_objects.push(upl.clone());
-
-    // Check if new UPL is a unique one
-    // If yes, then add it as a new unique item
-    // and return
-    match &upl.kind {
-      // If its a SKU but depreciated, then its a unique one: DepreciatedSku
-      UplKind::Sku { sku: _, piece } => {
-        if upl.depreciated {
-          self.items.push(Item::new(
-            ItemKind::SkuDepreciated {
-              upl_id: upl.upl_id.clone(),
-            },
-            upl.name.clone(),
-            *piece,
-            upl.retail_net_price,
-            upl.vat.clone(),
-            upl.retail_gross_price,
-          ));
-          // Recalculate totals
-          self.calculate_totals();
-          // Return self ref
-          return Ok(self);
-        }
-      }
-      // If its a derived product, its a unique one
-      UplKind::DerivedProduct {
-        product_id: _,
-        amount,
-      } => {
-        self.items.push(Item::new(
-          ItemKind::DerivedProduct {
-            upl_id: upl.upl_id.clone(),
-            amount: *amount,
-            unit: upl.unit.clone(),
-          },
-          upl.name.clone(),
-          1, // Its always 1 as its a unique one
-          upl.retail_net_price,
-          upl.vat.clone(),
-          upl.retail_gross_price,
-        ));
-        // Recalculate totals
+  fn set_sku_piece(&mut self, sku: u32, piece: u32) -> Result<&Self, String> {
+    for item in &mut self.shopping_list {
+      if item.sku == sku {
+        // Update sku piece if we found it
+        item.update_piece(piece);
+        // Recalculate the cart totals
         self.calculate_totals();
-        // Return self ref
         return Ok(self);
       }
     }
+    Err("A kért SKU nem szerepel a kosárban!".to_string())
+  }
 
-    // If its a not depreciated SKU
-    if let UplKind::Sku { sku, piece } = &upl.kind {
-      let new_upl_sku = *sku;
-      // If there is any suitable Sku Item in Items
-      // to place the new UPL then we store its position here
-      // Otherwise its none, so lets create a new unique item
-      let sku_position: Option<usize> = self.items.iter().position(|i| match &i.kind {
-        ItemKind::Sku { sku } => *sku == new_upl_sku,
-        ItemKind::SkuDepreciated { upl_id: _ } => false,
-        ItemKind::DerivedProduct {
-          upl_id: _,
-          amount: _,
-          unit: _,
-        } => false,
-      });
+  fn add_upl(&mut self, upl: UplInfoObject) -> Result<&Self, String> {
+    // Check if UPL is in the SKU upls
+    // If yes, then return error
+    if self
+      .upls_sku
+      .iter()
+      .find(|u| u.upl_id == upl.upl_id)
+      .is_some()
+    {
+      return Err("A kért UPL már a kosárban van!".to_string());
+    }
 
-      match sku_position {
-        // If we already have a related Item then add it there
-        Some(p) => match &mut self.items.get_mut(p) {
-          Some(ritem) => {
-            // Set new piece
-            ritem.set_new_piece(ritem.piece + piece);
-            // Be sure, the UPL ID is not in the related list
-            ritem.upl_ids.retain(|uid| uid != &upl.upl_id);
-            // Add upl_id as related id
-            ritem.upl_ids.push(upl.upl_id.clone());
-            // Recalculate totals
+    // Check if UPL is in the Unique upls
+    // If yes, then return error
+    if self
+      .upls_unique
+      .iter()
+      .find(|u| u.upl_id == upl.upl_id)
+      .is_some()
+    {
+      return Err("A kért UPL már a kosárban van!".to_string());
+    }
+
+    match upl.kind {
+      UplKind::Sku { sku, piece } => {
+        // Add to unique UPLs
+        if upl.depreciated {
+          self.upls_unique.push(upl);
+        } else {
+          self.upls_sku.push(upl);
+        }
+      }
+      // Add to unique UPLs
+      UplKind::DerivedProduct { product_id, amount } => self.upls_unique.push(upl),
+    }
+
+    // Add it as a SKU if a normal SKU
+    if let UplKind::Sku { sku, piece } = upl.kind {
+      if !upl.depreciated {
+        for item in &mut self.shopping_list {
+          if item.sku == sku {
+            item.update_add_piece(piece);
             self.calculate_totals();
-            // Return self ref
             return Ok(self);
           }
-          None => {}
-        },
-        // Create a new Item
-        None => {
-          // At last add a new item if we are here
-          self.items.push(Item::new(
-            ItemKind::Sku { sku: new_upl_sku },
-            upl.name,
-            *piece,
-            upl.retail_net_price,
-            upl.vat.clone(),
-            upl.retail_gross_price,
-          ));
-          // Recalculate totals
-          self.calculate_totals();
-          // Return self ref
-          return Ok(self);
         }
+        // Add it as a new SKU otherwise
+        self.shopping_list.push(ListItem::new(
+          sku,
+          upl.name,
+          piece,
+          upl.vat,
+          upl.retail_net_price,
+          upl.retail_gross_price,
+        ));
       }
     }
 
-    // if we are here, then its an error
-    // Roll back UPL in
-    self.upl_info_objects.retain(|uo| &uo.upl_id != &upl.upl_id);
-
-    // Recalculate totals
     self.calculate_totals();
-
-    // and return an error
-    Err("Kritikus hiba! A kért UPL nem tehető be a kosárba!".to_string())
+    Ok(self)
   }
 
   fn remove_upl(&mut self, upl_id: String) -> Result<&Self, String> {
-    // Try find UPL
-    let upl_position = self
-      .upl_info_objects
-      .iter()
-      .position(|u| u.upl_id == upl_id)
-      .ok_or("A kért UPL nem szerepel a kosárban!".to_string())?;
-
-    let upl_obj = self
-      .upl_info_objects
-      .iter()
-      .find(|u| u.upl_id == upl_id)
-      .ok_or("A kért UPL nem szerepel a kosárban!".to_string())?;
-
-    // Remove UPL from SKU
-    // Iterate over all items
-    for item in &mut self.items {
-      // Try to find item which has the required UPL
-      if item.upl_ids.contains(&upl_id) {
-        // Remove UPL ID from upl_ids
-        item.upl_ids.retain(|i| i != &upl_id);
-        // Reset Item totals
-        item.set_new_piece(
-          item.piece
-            - match upl_obj.kind {
-              UplKind::Sku { sku: _, piece } => piece,
-              UplKind::DerivedProduct {
-                product_id: _,
-                amount: _,
-              } => 1,
-            },
-        );
-      }
-    }
-
-    // Remove UPL from UPL info object vector
-    self.upl_info_objects.remove(upl_position);
-
-    // Recalculate totals
+    // Remove from Upl Sku if its there
+    self.upls_sku.retain(|u| u.upl_id != upl_id);
+    // Remove from Upl Unique if its there
+    self.upls_unique.retain(|u| u.upl_id != upl_id);
+    // Recalculate the cart totals
     self.calculate_totals();
-
+    // Return self as ref
     Ok(self)
   }
 
@@ -404,24 +399,63 @@ impl CartMethods for Cart {
   }
 
   fn get_balance(&self) -> i32 {
-    self
-      .items
-      .iter()
-      .map(|i| i.total_retail_price_gross)
-      .sum::<u32>() as i32
-      - self.get_payment_total()
+    self.total_gross as i32 - self.get_payment_total()
   }
 
   fn get_profit_net(&self) -> i32 {
-    self
-      .upl_info_objects
-      .iter()
-      .map(|u| u.retail_net_price as i32 - u.procurement_net_price as i32)
-      .sum::<i32>()
+    self.total_net as i32
+      - (self
+        .upls_sku
+        .iter()
+        .map(|u| u.procurement_net_price as i32)
+        .sum::<i32>()
+        + self
+          .upls_unique
+          .iter()
+          .map(|u| u.procurement_net_price as i32)
+          .sum::<i32>())
   }
 
   fn close_cart(&mut self) -> Result<&Self, String> {
-    // Check if we can close
+    // Check items count match
+    for item in &self.shopping_list {
+      if item.piece
+        != self
+          .upls_sku
+          .iter()
+          .filter(|u| {
+            if let UplKind::Sku { sku, piece } = u.kind {
+              return sku == item.sku;
+            }
+            false
+          })
+          .map(|u| u.get_piece())
+          .sum::<u32>()
+      {
+        return Err("Rendezd a kosarat! Minden SKU-hoz UPL-t kell rendelni!".to_string());
+      }
+    }
+    // Check totals
+    let mut _total_net = 0;
+    let mut _total_vat = 0;
+    let mut _total_gross = 0;
+    for item in &self.shopping_list {
+      _total_net += item.total_price_net;
+      _total_vat += item.total_price_vat;
+      _total_gross += item.total_price_gross;
+    }
+    for item in &self.upls_unique {
+      _total_net += item.get_price_net();
+      _total_vat += item.get_price_vat();
+      _total_gross += item.get_price_gross();
+    }
+    if _total_net != self.total_net
+      || _total_vat != self.total_vat
+      || _total_gross != self.total_gross
+    {
+      return Err("A kosár záró összegei nem helyesek! Nem lehet lezárni!".to_string());
+    }
+    // Check payment
     match self.payment_kind {
       PaymentKind::Cash => {
         if self.get_balance() != 0 {
@@ -437,7 +471,7 @@ impl CartMethods for Cart {
           );
         }
       }
-      PaymentKind::Transfer { payment_duedate: _ } => match self.document_kind {
+      PaymentKind::Transfer => match self.document_kind {
         DocumentKind::Receipt => {
           return Err("A kosár nem zárható le, átutalás esetén kötelező számlát kérni!".to_string())
         }
@@ -445,27 +479,38 @@ impl CartMethods for Cart {
       },
     }
 
-    if self.items.iter().map(|i| i.upl_ids.len()).sum::<usize>() != self.upl_info_objects.len() {
-      return Err("Lehetetlen hiba! A kosár nem zárható le! A kosárhoz rendelt UPL-ek száma eltérnek a tételekhez rendelt UPL-ek számától.".to_string());
-    }
-
+    // Return self as ref
+    // Important to remove this cart in higher level
+    // and transform it to purchase
     Ok(self)
   }
 
   fn calculate_totals(&mut self) {
     // Set new total net
     self.total_net = self
-      .items
+      .shopping_list
       .iter()
-      .map(|i| i.total_retail_price_net)
-      .sum::<u32>();
+      .map(|i| i.total_price_net)
+      .sum::<u32>()
+      + self
+        .upls_unique
+        .iter()
+        .map(|u| u.get_price_net())
+        .sum::<u32>();
+
     // Set new total gross
-    self.total_gross = self
-      .items
+    self.total_net = self
+      .shopping_list
       .iter()
-      .map(|i| i.total_retail_price_gross)
-      .sum::<u32>();
-    // Set new total VAT
+      .map(|i| i.total_price_gross)
+      .sum::<u32>()
+      + self
+        .upls_unique
+        .iter()
+        .map(|u| u.get_price_gross())
+        .sum::<u32>();
+
+    // Set new total vat
     self.total_vat = self.total_gross - self.total_net;
   }
 }
@@ -486,7 +531,9 @@ impl Default for DocumentKind {
 pub struct Customer {
   pub id: u32,
   pub name: String,
-  pub address: String,
+  pub zip: String,
+  pub location: String,
+  pub street: String,
   pub tax_number: String,
 }
 
@@ -495,7 +542,9 @@ impl Default for Customer {
     Self {
       id: 0,
       name: String::default(),
-      address: String::default(),
+      zip: String::default(),
+      location: String::default(),
+      street: String::default(),
       tax_number: String::default(),
     }
   }
@@ -505,7 +554,7 @@ impl Default for Customer {
 pub enum PaymentKind {
   Cash,
   Card,
-  Transfer { payment_duedate: DateTime<Utc> },
+  Transfer,
 }
 
 impl Default for PaymentKind {
@@ -621,7 +670,6 @@ pub struct UplInfoObject {
   pub upl_id: String,
   pub kind: UplKind,
   pub name: String,
-  pub unit: String,
   pub retail_net_price: u32,
   pub vat: String,
   pub retail_gross_price: u32,
@@ -636,13 +684,62 @@ impl Default for UplInfoObject {
       upl_id: String::default(),
       kind: UplKind::default(),
       name: String::default(),
-      unit: String::default(),
       retail_net_price: 0,
       vat: String::default(),
       retail_gross_price: 0,
       procurement_net_price: 0,
       best_before: Utc::now(),
       depreciated: false,
+    }
+  }
+}
+
+impl UplInfoObject {
+  /// Try to get UPL related SKU
+  /// if there is any
+  pub fn get_sku(&self) -> Option<u32> {
+    match &self.kind {
+      UplKind::Sku { sku, piece: _ } => Some(*sku),
+      _ => None,
+    }
+  }
+  /// Try to get UPL related product ID
+  /// if there is any
+  pub fn get_product_id(&self) -> Option<u32> {
+    match &self.kind {
+      UplKind::DerivedProduct {
+        product_id,
+        amount: _,
+      } => Some(*product_id),
+      _ => None,
+    }
+  }
+  /// Get UPL price net
+  pub fn get_price_net(&self) -> u32 {
+    match self.kind {
+      UplKind::Sku { sku, piece } => self.retail_net_price * piece,
+      UplKind::DerivedProduct { product_id, amount } => self.retail_net_price,
+    }
+  }
+  /// Get UPL price gross
+  pub fn get_price_gross(&self) -> u32 {
+    match self.kind {
+      UplKind::Sku { sku, piece } => self.retail_gross_price * piece,
+      UplKind::DerivedProduct { product_id, amount } => self.retail_gross_price,
+    }
+  }
+  /// Get UPL price VAT
+  pub fn get_price_vat(&self) -> u32 {
+    self.get_price_gross() - self.get_price_net()
+  }
+  /// Get piece
+  pub fn get_piece(&self) -> u32 {
+    match self.kind {
+      UplKind::Sku { sku: _, piece } => piece,
+      UplKind::DerivedProduct {
+        product_id: _,
+        amount: _,
+      } => 1,
     }
   }
 }

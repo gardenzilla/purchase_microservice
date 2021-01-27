@@ -10,16 +10,20 @@ use uuid::Uuid;
 pub struct Purchase {
   pub id: Uuid,                             // Cart ID UUID?
   pub customer: Option<Customer>,           // Only if there is any related one
-  pub items: Vec<Item>,                     // Cart items
-  pub upl_info_objects: Vec<UplInfoObject>, // Related UPL info objects
+  pub discount_percentage: Option<u32>,     // Applied discount
+  pub items: Vec<Item>,                     // Cart items (All items: shopping list + unique)
+  pub upl_info_objects: Vec<UplInfoObject>, // ALL UPL info objects
   pub total_net: u32,                       // Total cart net value in HUF
   pub total_vat: u32,                       // Total VAT
   pub total_gross: u32,                     // Total cart gross value in HUF
   pub document_kind: DocumentKind,          // Receipt or Invoice
   pub payment_kind: PaymentKind,            // cash, transfer, card
   pub payments: Vec<Payment>,               // Payment vector
+  pub profit_net: i32,                      // Net profit
   pub owner_uid: u32,                       // Shop assistant UID
   pub store_id: Option<u32>,                // Now its stock ID
+  pub date_completion: DateTime<Utc>,       // Completion date
+  pub payment_duedate: DateTime<Utc>,       // Payment duedate
   pub restored: Option<Uuid>,               // Some(_) if its restored
   pub created_by: u32,                      // UID
   pub created_at: DateTime<Utc>,            // When cart created
@@ -71,7 +75,9 @@ impl Default for DocumentKind {
 pub struct Customer {
   pub id: u32,
   pub name: String,
-  pub address: String,
+  pub zip: String,
+  pub location: String,
+  pub street: String,
   pub tax_number: String,
 }
 
@@ -80,7 +86,9 @@ impl Default for Customer {
     Self {
       id: 0,
       name: String::default(),
-      address: String::default(),
+      zip: String::default(),
+      location: String::default(),
+      street: String::default(),
       tax_number: String::default(),
     }
   }
@@ -90,7 +98,7 @@ impl Default for Customer {
 pub enum PaymentKind {
   Cash,
   Card,
-  Transfer { payment_duedate: DateTime<Utc> },
+  Transfer,
 }
 
 impl Default for PaymentKind {
@@ -117,6 +125,7 @@ impl Default for Payment {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Item {
   pub kind: ItemKind,
+  pub product_id: u32,
   pub name: String,
   pub piece: u32,
   pub retail_price_net: u32,
