@@ -120,13 +120,31 @@ impl From<crate::cart::Cart> for CartObject {
               cart_object::ItemKind::DepreciatedSku
             }
             crate::cart::ItemKind::DerivedProduct {
-              upl_id,
-              amount,
-              unit,
+              upl_id: _,
+              amount: _,
+              unit: _,
             } => cart_object::ItemKind::DerivedProduct,
           } as i32,
           name: i.name.clone(),
           piece: i.piece,
+          quantity: match &i.kind {
+            cart::ItemKind::Sku { sku: _ } => 1,
+            cart::ItemKind::SkuDepreciated { upl_id: _ } => 1,
+            cart::ItemKind::DerivedProduct {
+              upl_id: _,
+              amount,
+              unit: _,
+            } => *amount,
+          },
+          unit: match &i.kind {
+            cart::ItemKind::Sku { sku: _ } => "db".to_string(),
+            cart::ItemKind::SkuDepreciated { upl_id: _ } => "db".to_string(),
+            cart::ItemKind::DerivedProduct {
+              upl_id: _,
+              amount: _,
+              unit,
+            } => unit.to_string(),
+          },
           retail_price_net: i.retail_price_net,
           vat: i.vat.clone(),
           retail_price_gross: i.retail_price_gross,
