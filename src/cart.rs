@@ -588,7 +588,6 @@ pub struct Item {
   pub retail_price_gross: u32,
   pub total_retail_price_net: u32,
   pub total_retail_price_gross: u32,
-  pub upl_ids: Vec<String>,
 }
 
 impl Item {
@@ -609,7 +608,6 @@ impl Item {
       retail_price_gross,
       total_retail_price_net: retail_price_net * piece,
       total_retail_price_gross: retail_price_gross * piece,
-      upl_ids: Vec::new(),
     }
   }
   pub fn set_new_piece(&mut self, new_piece: u32) -> &Self {
@@ -634,7 +632,6 @@ impl Default for Item {
       retail_price_gross: 0,
       total_retail_price_net: 0,
       total_retail_price_gross: 0,
-      upl_ids: Vec::new(),
     }
   }
 }

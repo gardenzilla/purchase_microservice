@@ -81,14 +81,27 @@ impl From<std::env::VarError> for ServiceError {
 
 impl From<crate::cart::Cart> for CartInfoObject {
   fn from(f: crate::cart::Cart) -> Self {
+    let mut names = f
+      .shopping_list
+      .iter()
+      .map(|i| i.name.clone())
+      .collect::<Vec<String>>();
+
+    names.extend(
+      f.upls_unique
+        .iter()
+        .map(|i| i.name.clone())
+        .collect::<Vec<String>>(),
+    );
+
     Self {
       cart_id: f.id.to_string(),
       customer_name: match f.customer {
         Some(c) => c.name.clone(),
         None => "".to_string(),
       },
-      upl_count: f.upl_info_objects.len() as u32,
-      item_names: f.items.iter().map(|i| i.name.clone()).collect(),
+      upl_count: f.upls_sku.len() as u32 + f.upls_unique.len() as u32,
+      item_names: names,
       owner: f.owner_uid,
       created_by: f.created_by,
       created_at: f.created_at.to_rfc3339(),
@@ -108,67 +121,33 @@ impl From<crate::cart::Cart> for CartObject {
         Some(c) => Some(Customer {
           customer_id: c.id.clone(),
           name: c.name.clone(),
-          address: c.address.clone(),
+          zip: c.zip.clone(),
+          location: c.location.clone(),
+          street: c.street.clone(),
           tax_number: c.tax_number.clone(),
         }),
         None => None,
       },
-      items: f
-        .items
+      discount_percentage: f.discount_percentage.unwrap_or(0),
+      shopping_list: f
+        .shopping_list
         .iter()
         .map(|i| cart_object::Item {
-          kind: match &i.kind {
-            crate::cart::ItemKind::Sku { sku: _ } => cart_object::ItemKind::Sku,
-            crate::cart::ItemKind::SkuDepreciated { upl_id: _ } => {
-              cart_object::ItemKind::DepreciatedSku
-            }
-            crate::cart::ItemKind::DerivedProduct {
-              upl_id: _,
-              amount: _,
-              unit: _,
-            } => cart_object::ItemKind::DerivedProduct,
-          } as i32,
+          kind: cart_object::ItemKind::Sku as i32,
           name: i.name.clone(),
           piece: i.piece,
-          quantity: match &i.kind {
-            cart::ItemKind::Sku { sku: _ } => 1,
-            cart::ItemKind::SkuDepreciated { upl_id: _ } => 1,
-            cart::ItemKind::DerivedProduct {
-              upl_id: _,
-              amount,
-              unit: _,
-            } => *amount,
-          },
-          unit: match &i.kind {
-            cart::ItemKind::Sku { sku: _ } => "db".to_string(),
-            cart::ItemKind::SkuDepreciated { upl_id: _ } => "db".to_string(),
-            cart::ItemKind::DerivedProduct {
-              upl_id: _,
-              amount: _,
-              unit,
-            } => unit.to_string(),
-          },
-          retail_price_net: i.retail_price_net,
+          retail_price_net: i.unit_price_net,
           vat: i.vat.clone(),
-          retail_price_gross: i.retail_price_gross,
-          total_retail_price_net: i.retail_price_net * i.piece,
-          total_retail_price_gross: i.retail_price_gross * i.piece,
-          upl_ids: i.upl_ids.clone(),
+          retail_price_gross: i.unit_price_gross,
+          total_retail_price_net: i.total_price_net,
+          total_retail_price_gross: i.total_price_gross,
         })
         .collect(),
-      upl_info_objects: f
-        .upl_info_objects
+      upls_sku: f
+        .upls_sku
         .iter()
         .map(|uio| UplInfoObject {
           upl_id: uio.upl_id.clone(),
-          name: uio.name.clone(),
-          unit: uio.unit.clone(),
-          retail_net_price: uio.retail_net_price,
-          vat: uio.vat.clone(),
-          retail_gross_price: uio.retail_gross_price,
-          procurement_net_price: uio.procurement_net_price,
-          best_before: uio.best_before.to_rfc3339(),
-          depreciated: uio.depreciated,
           upl_kind: Some(match uio.kind {
             cart::UplKind::Sku { sku, piece } => upl_info_object::UplKind::Sku(UplKindSku {
               sku: sku,
@@ -181,8 +160,44 @@ impl From<crate::cart::Cart> for CartObject {
               })
             }
           }),
+          name: uio.name.clone(),
+          retail_net_price: uio.retail_net_price,
+          vat: uio.vat.clone(),
+          retail_gross_price: uio.retail_gross_price,
+          procurement_net_price: uio.procurement_net_price,
+          best_before: uio.best_before.to_rfc3339(),
+          depreciated: uio.depreciated,
         })
         .collect(),
+      upls_unique: f
+        .upls_unique
+        .iter()
+        .map(|uio| UplInfoObject {
+          upl_id: uio.upl_id.clone(),
+          upl_kind: Some(match uio.kind {
+            cart::UplKind::Sku { sku, piece } => upl_info_object::UplKind::Sku(UplKindSku {
+              sku: sku,
+              piece: piece,
+            }),
+            cart::UplKind::DerivedProduct { product_id, amount } => {
+              upl_info_object::UplKind::OpenedSku(UplKindOpenedSku {
+                product_id: product_id,
+                amount: amount,
+              })
+            }
+          }),
+          name: uio.name.clone(),
+          retail_net_price: uio.retail_net_price,
+          vat: uio.vat.clone(),
+          retail_gross_price: uio.retail_gross_price,
+          procurement_net_price: uio.procurement_net_price,
+          best_before: uio.best_before.to_rfc3339(),
+          depreciated: uio.depreciated,
+        })
+        .collect(),
+      total_net: f.total_net,
+      total_vat: f.total_vat,
+      total_gross: f.total_gross,
       need_invoice: match f.document_kind {
         crate::cart::DocumentKind::Receipt => false,
         crate::cart::DocumentKind::Invoice => true,
@@ -190,7 +205,7 @@ impl From<crate::cart::Cart> for CartObject {
       payment_kind: match f.payment_kind {
         crate::cart::PaymentKind::Cash => PaymentKind::Cash,
         crate::cart::PaymentKind::Card => PaymentKind::Card,
-        crate::cart::PaymentKind::Transfer { payment_duedate: _ } => PaymentKind::Transfer,
+        crate::cart::PaymentKind::Transfer => PaymentKind::Transfer,
       } as i32,
       payments: f
         .payments
@@ -204,6 +219,8 @@ impl From<crate::cart::Cart> for CartObject {
       profit_net: f.get_profit_net(),
       owner_uid: f.owner_uid,
       store_id: f.store_id.unwrap_or(0), // 0 means no store
+      date_completion: f.date_completion.to_rfc3339(),
+      payment_duedate: f.payment_duedate.to_rfc3339(),
       created_by: f.created_by,
       created_at: f.created_at.to_rfc3339(),
     }
@@ -212,48 +229,61 @@ impl From<crate::cart::Cart> for CartObject {
 
 impl From<cart::Cart> for purchase::Purchase {
   fn from(f: cart::Cart) -> Self {
-    Self {
-      id: f.id,
-      customer: match f.customer {
-        Some(c) => Some(purchase::Customer {
-          id: c.id,
-          name: c.name,
-          address: c.address,
-          tax_number: c.tax_number,
-        }),
-        None => None,
-      },
-      items: f
-        .items
+    let mut items: Vec<purchase::Item> = Vec::new();
+
+    items.extend(
+      f.shopping_list
+        .iter()
+        .map(|i| purchase::Item {
+          kind: purchase::ItemKind::Sku, // Its just SKU
+          product_id: 0, // 0 as its normal shopping list items, we wont need pid for invoice
+          name: i.name.to_string(),
+          piece: i.piece,
+          retail_price_net: i.unit_price_net,
+          vat: i.vat.to_string(),
+          retail_price_gross: i.unit_price_gross,
+          total_retail_price_net: i.total_price_net,
+          total_retail_price_gross: i.total_price_gross,
+        })
+        .collect::<Vec<purchase::Item>>(),
+    );
+
+    items.extend(
+      f.upls_unique
         .iter()
         .map(|i| purchase::Item {
           kind: match &i.kind {
-            cart::ItemKind::Sku { sku } => purchase::ItemKind::Sku { sku: *sku },
-            cart::ItemKind::SkuDepreciated { upl_id } => purchase::ItemKind::SkuDepreciated {
-              upl_id: upl_id.to_string(),
+            cart::UplKind::Sku { sku, piece } => match i.depreciated {
+              true => purchase::ItemKind::DerivedProduct,
+              false => purchase::ItemKind::Sku,
             },
-            cart::ItemKind::DerivedProduct {
-              upl_id,
-              amount,
-              unit,
-            } => purchase::ItemKind::DerivedProduct {
-              upl_id: upl_id.to_string(),
-              amount: *amount,
-              unit: unit.to_string(),
-            },
+            cart::UplKind::DerivedProduct {
+              product_id: _,
+              amount: _,
+            } => purchase::ItemKind::DerivedProduct,
+          },
+          product_id: match &i.kind {
+            _ => 0,
+            cart::UplKind::DerivedProduct {
+              product_id,
+              amount: _,
+            } => *product_id,
           },
           name: i.name.to_string(),
-          piece: i.piece,
-          retail_price_net: i.retail_price_net,
+          piece: i.get_piece(),
+          retail_price_net: i.retail_net_price,
           vat: i.vat.to_string(),
-          retail_price_gross: i.retail_price_gross,
-          total_retail_price_net: i.total_retail_price_net,
-          total_retail_price_gross: i.total_retail_price_gross,
-          upl_ids: i.upl_ids.clone(),
+          retail_price_gross: i.retail_gross_price,
+          total_retail_price_net: i.get_price_net(),
+          total_retail_price_gross: i.get_price_gross(),
         })
-        .collect(),
-      upl_info_objects: f
-        .upl_info_objects
+        .collect::<Vec<purchase::Item>>(),
+    );
+
+    let mut upls: Vec<purchase::UplInfoObject> = Vec::new();
+
+    upls.extend(
+      f.upls_sku
         .iter()
         .map(|u| purchase::UplInfoObject {
           upl_id: u.upl_id.to_string(),
@@ -264,7 +294,6 @@ impl From<cart::Cart> for purchase::Purchase {
             }
           },
           name: u.name.to_string(),
-          unit: u.unit.to_string(),
           retail_net_price: u.retail_net_price,
           vat: u.vat.to_string(),
           retail_gross_price: u.retail_gross_price,
@@ -272,7 +301,47 @@ impl From<cart::Cart> for purchase::Purchase {
           best_before: u.best_before,
           depreciated: u.depreciated,
         })
-        .collect(),
+        .collect::<Vec<purchase::UplInfoObject>>(),
+    );
+
+    upls.extend(
+      f.upls_unique
+        .iter()
+        .map(|u| purchase::UplInfoObject {
+          upl_id: u.upl_id.to_string(),
+          kind: match u.kind {
+            cart::UplKind::Sku { sku, piece } => purchase::UplKind::Sku { sku, piece },
+            cart::UplKind::DerivedProduct { product_id, amount } => {
+              purchase::UplKind::DerivedProduct { product_id, amount }
+            }
+          },
+          name: u.name.to_string(),
+          retail_net_price: u.retail_net_price,
+          vat: u.vat.to_string(),
+          retail_gross_price: u.retail_gross_price,
+          procurement_net_price: u.procurement_net_price,
+          best_before: u.best_before,
+          depreciated: u.depreciated,
+        })
+        .collect::<Vec<purchase::UplInfoObject>>(),
+    );
+
+    Self {
+      id: f.id,
+      customer: match f.customer {
+        Some(c) => Some(purchase::Customer {
+          id: c.id,
+          name: c.name,
+          zip: c.zip,
+          location: c.location,
+          street: c.street,
+          tax_number: c.tax_number,
+        }),
+        None => None,
+      },
+      discount_percentage: f.discount_percentage,
+      items: items,
+      upl_info_objects: upls,
       total_net: f.total_net,
       total_vat: f.total_vat,
       total_gross: f.total_gross,
@@ -283,9 +352,7 @@ impl From<cart::Cart> for purchase::Purchase {
       payment_kind: match f.payment_kind {
         cart::PaymentKind::Cash => purchase::PaymentKind::Cash,
         cart::PaymentKind::Card => purchase::PaymentKind::Card,
-        cart::PaymentKind::Transfer { payment_duedate } => {
-          purchase::PaymentKind::Transfer { payment_duedate }
-        }
+        cart::PaymentKind::Transfer => purchase::PaymentKind::Transfer,
       },
       payments: f
         .payments
@@ -295,8 +362,11 @@ impl From<cart::Cart> for purchase::Purchase {
           amount: p.amount,
         })
         .collect(),
+      profit_net: f.get_profit_net(),
       owner_uid: f.owner_uid,
       store_id: f.store_id,
+      date_completion: f.date_completion,
+      payment_duedate: f.payment_duedate,
       restored: None,
       created_by: f.created_by,
       created_at: f.created_at,

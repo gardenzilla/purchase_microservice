@@ -34,6 +34,7 @@ impl Default for Purchase {
     Self {
       id: Uuid::default(),
       customer: None,
+      discount_percentage: None,
       items: Vec::new(),
       upl_info_objects: Vec::new(),
       total_net: 0,
@@ -42,8 +43,11 @@ impl Default for Purchase {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::new(),
+      profit_net: 0,
       owner_uid: 0,
       store_id: None,
+      date_completion: Utc::today().and_hms(0, 0, 0),
+      payment_duedate: Utc::today().and_hms(0, 0, 0),
       restored: None,
       created_by: 0,
       created_at: Utc::now(),
@@ -133,13 +137,13 @@ pub struct Item {
   pub retail_price_gross: u32,
   pub total_retail_price_net: u32,
   pub total_retail_price_gross: u32,
-  pub upl_ids: Vec<String>,
 }
 
 impl Default for Item {
   fn default() -> Self {
     Self {
       kind: ItemKind::default(),
+      product_id: 0,
       name: String::default(),
       piece: 0,
       retail_price_net: 0,
@@ -147,7 +151,6 @@ impl Default for Item {
       retail_price_gross: 0,
       total_retail_price_net: 0,
       total_retail_price_gross: 0,
-      upl_ids: Vec::new(),
     }
   }
 }
@@ -155,26 +158,18 @@ impl Default for Item {
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ItemKind {
   // Sku or BulkSku
-  Sku {
-    sku: u32,
-  },
+  Sku,
   // Depreciated SKU or BulkSku
-  SkuDepreciated {
-    upl_id: String,
-  },
+  SkuDepreciated,
   // OpenedSku or Derived Product
-  DerivedProduct {
-    upl_id: String,
-    amount: u32,
-    unit: String,
-  },
+  DerivedProduct,
   // Depreciated OpenedSku or Derived Product cannot add to cart
   // for now
 }
 
 impl Default for ItemKind {
   fn default() -> Self {
-    Self::Sku { sku: 0 }
+    Self::Sku
   }
 }
 
@@ -183,7 +178,6 @@ pub struct UplInfoObject {
   pub upl_id: String,
   pub kind: UplKind,
   pub name: String,
-  pub unit: String,
   pub retail_net_price: u32,
   pub vat: String,
   pub retail_gross_price: u32,
@@ -198,7 +192,6 @@ impl Default for UplInfoObject {
       upl_id: String::default(),
       kind: UplKind::default(),
       name: String::default(),
-      unit: String::default(),
       retail_net_price: 0,
       vat: String::default(),
       retail_gross_price: 0,

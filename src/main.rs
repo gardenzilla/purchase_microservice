@@ -391,6 +391,13 @@ impl Purchase for PurchaseService {
   ) -> Result<Response<proto::purchase::PurchaseStatResponse>, Status> {
     todo!()
   }
+
+  async fn cart_set_sku_piece(
+      &self,
+      request: Request<proto::purchase::CartSetSkuPieceRequest>,
+    ) -> Result<Response<CartObject>, Status> {
+        todo!()
+    }
 }
 
 #[tokio::main]
