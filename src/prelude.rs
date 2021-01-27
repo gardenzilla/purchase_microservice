@@ -114,14 +114,16 @@ impl From<crate::cart::Cart> for CartObject {
         .items
         .iter()
         .map(|i| cart_object::Item {
-          kind: match i.kind {
+          kind: match &i.kind {
             crate::cart::ItemKind::Sku { sku: _ } => cart_object::ItemKind::Sku,
             crate::cart::ItemKind::SkuDepreciated { upl_id: _ } => {
               cart_object::ItemKind::DepreciatedSku
             }
-            crate::cart::ItemKind::DerivedProduct { upl_id: _ } => {
-              cart_object::ItemKind::DerivedProduct
-            }
+            crate::cart::ItemKind::DerivedProduct {
+              upl_id,
+              amount,
+              unit,
+            } => cart_object::ItemKind::DerivedProduct,
           } as i32,
           name: i.name.clone(),
           piece: i.piece,
@@ -178,7 +180,7 @@ impl From<crate::cart::Cart> for CartObject {
         })
         .collect(),
       payment_balance: f.get_balance(),
-      profit_net: f.get_profit(),
+      profit_net: f.get_profit_net(),
       owner_uid: f.owner_uid,
       store_id: f.store_id.unwrap_or(0), // 0 means no store
       created_by: f.created_by,

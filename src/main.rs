@@ -124,6 +124,20 @@ impl Purchase for PurchaseService {
     todo!()
   }
 
+  async fn cart_set_owner(
+    &self,
+    request: Request<proto::purchase::CartSetOwnerRequest>,
+  ) -> Result<Response<proto::purchase::CartObject>, Status> {
+    todo!()
+  }
+
+  async fn cart_set_store(
+    &self,
+    request: Request<proto::purchase::CartSetStoreRequest>,
+  ) -> Result<Response<proto::purchase::CartObject>, Status> {
+    todo!()
+  }
+
   async fn cart_close(
     &self,
     request: Request<proto::purchase::CartCloseRequest>,
