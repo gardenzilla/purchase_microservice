@@ -170,7 +170,10 @@ impl From<crate::cart::Cart> for CartObject {
           vat: uio.vat.clone(),
           retail_gross_price: uio.retail_gross_price,
           procurement_net_price: uio.procurement_net_price,
-          best_before: uio.best_before.to_rfc3339(),
+          best_before: match uio.best_before {
+            Some(bb) => bb.to_rfc3339(),
+            None => "".to_string(),
+          },
           depreciated: uio.depreciated,
         })
         .collect(),
@@ -196,7 +199,10 @@ impl From<crate::cart::Cart> for CartObject {
           vat: uio.vat.clone(),
           retail_gross_price: uio.retail_gross_price,
           procurement_net_price: uio.procurement_net_price,
-          best_before: uio.best_before.to_rfc3339(),
+          best_before: match uio.best_before {
+            Some(bb) => bb.to_rfc3339(),
+            None => "".to_string(),
+          },
           depreciated: uio.depreciated,
         })
         .collect(),
@@ -303,7 +309,10 @@ impl From<cart::Cart> for purchase::Purchase {
           vat: u.vat.to_string(),
           retail_gross_price: u.retail_gross_price,
           procurement_net_price: u.procurement_net_price,
-          best_before: u.best_before,
+          best_before: match u.best_before {
+            Some(bb) => Some(bb),
+            None => None,
+          },
           depreciated: u.depreciated,
         })
         .collect::<Vec<purchase::UplInfoObject>>(),

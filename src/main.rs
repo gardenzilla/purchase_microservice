@@ -200,9 +200,14 @@ impl PurchaseService {
       vat: u.vat,
       retail_gross_price: u.retail_gross_price,
       procurement_net_price: u.procurement_net_price,
-      best_before: DateTime::parse_from_rfc3339(&u.best_before)
-        .map_err(|_| ServiceError::internal_error("A megadott dátum hibás"))?
-        .with_timezone(&Utc),
+      best_before: match u.best_before.len() > 0 {
+        true => Some(
+          DateTime::parse_from_rfc3339(&u.best_before)
+            .map_err(|_| ServiceError::internal_error("A megadott dátum hibás"))?
+            .with_timezone(&Utc),
+        ),
+        false => None,
+      },
       depreciated: u.depreciated,
     };
     let res = self

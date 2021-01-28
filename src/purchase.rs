@@ -184,7 +184,7 @@ pub struct UplInfoObject {
   pub vat: String,
   pub retail_gross_price: u32,
   pub procurement_net_price: u32,
-  pub best_before: DateTime<Utc>,
+  pub best_before: Option<DateTime<Utc>>,
   pub depreciated: bool,
 }
 
@@ -198,7 +198,7 @@ impl Default for UplInfoObject {
       vat: String::default(),
       retail_gross_price: 0,
       procurement_net_price: 0,
-      best_before: Utc::now(),
+      best_before: None,
       depreciated: false,
     }
   }
