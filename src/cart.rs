@@ -162,6 +162,10 @@ impl ListItem {
     self.update_piece(self.piece + plus_piece);
     self
   }
+  fn replace(&mut self, new_item: ListItem) -> &Self {
+    let _ = std::mem::replace(self, new_item);
+    self
+  }
 }
 
 impl Default for ListItem {
@@ -243,8 +247,8 @@ impl CartMethods for Cart {
     match pos {
       // If we found it, lets update it
       Some(p) => {
-        if let Some(mut item) = self.shopping_list.get_mut(p) {
-          *item = new_sku;
+        if let Some(item) = self.shopping_list.get_mut(p) {
+          item.replace(new_sku);
         }
       }
       // Othwise lets push it
