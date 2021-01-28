@@ -1,7 +1,12 @@
-use gzlib::proto::purchase::{
-  cart_object, upl_info_object, CartInfoObject, CartObject, Customer, Payment, PaymentKind,
-  UplInfoObject,
+use chrono::Utc;
+use gzlib::proto::{
+  self,
+  purchase::{
+    cart_object, upl_info_object, CartInfoObject, CartObject, Customer, Payment, PaymentKind,
+    PurchaseInfoObject, PurchaseObject, UplInfoObject,
+  },
 };
+use proto::purchase::purchase_object;
 use upl_info_object::{UplKindOpenedSku, UplKindSku};
 
 use crate::{
@@ -362,14 +367,120 @@ impl From<cart::Cart> for purchase::Purchase {
           amount: p.amount,
         })
         .collect(),
+      balance: f.get_balance(),
       profit_net: f.get_profit_net(),
       owner_uid: f.owner_uid,
       store_id: f.store_id,
-      date_completion: f.date_completion,
-      payment_duedate: f.payment_duedate,
+      date_completion: Utc::today().and_hms(0, 0, 0),
+      payment_duedate: Utc::today().and_hms(0, 0, 0), // TODO! refact to manage duedate for inv.
       restored: None,
       created_by: f.created_by,
       created_at: f.created_at,
+    }
+  }
+}
+
+impl From<purchase::Purchase> for PurchaseInfoObject {
+  fn from(f: purchase::Purchase) -> Self {
+    Self {
+      purchase_id: f.id.to_string(),
+      customer: match f.customer {
+        Some(c) => Some(proto::purchase::Customer {
+          customer_id: c.id,
+          name: c.name,
+          zip: c.zip,
+          location: c.location,
+          street: c.street,
+          tax_number: c.tax_number,
+        }),
+        None => None,
+      },
+      upl_count: f.upl_info_objects.len() as u32,
+      total_net_price: f.total_net,
+      total_vat: f.total_vat,
+      total_gross_price: f.total_gross,
+      balance: f.balance,
+      document_invoice: match f.document_kind {
+        purchase::DocumentKind::Receipt => false,
+        purchase::DocumentKind::Invoice => true,
+      },
+      date_completion: f.date_completion.to_rfc3339(),
+      payment_duedate: f.payment_duedate.to_rfc3339(),
+      payment_expired: (f.payment_duedate.date() > Utc::today()),
+      profit_net: f.profit_net,
+      restored: f.restored.is_some(),
+      created_by: f.created_by,
+      created_at: f.created_at.to_rfc3339(),
+    }
+  }
+}
+
+impl From<purchase::Purchase> for PurchaseObject {
+  fn from(f: purchase::Purchase) -> Self {
+    Self {
+      id: f.id.to_string(),
+      customer: match f.customer {
+        Some(c) => Some(proto::purchase::Customer {
+          customer_id: c.id,
+          name: c.name,
+          zip: c.zip,
+          location: c.location,
+          street: c.street,
+          tax_number: c.tax_number,
+        }),
+        None => None,
+      },
+      discount_percentage: f.discount_percentage.unwrap_or(0),
+      items: f
+        .items
+        .iter()
+        .map(|i| proto::purchase::purchase_object::Item {
+          kind: match i.kind {
+            purchase::ItemKind::Sku => purchase_object::ItemKind::Sku,
+            purchase::ItemKind::SkuDepreciated => purchase_object::ItemKind::DepreciatedSku,
+            purchase::ItemKind::DerivedProduct => purchase_object::ItemKind::DerivedProduct,
+          } as i32,
+          product_id: i.product_id,
+          name: i.name.clone(),
+          piece: i.piece,
+          retail_price_net: i.retail_price_net,
+          vat: i.vat.clone(),
+          retail_price_gross: i.retail_price_gross,
+          total_retail_price_net: i.total_retail_price_net,
+          total_retail_price_gross: i.total_retail_price_gross,
+          upl_ids: Vec::new(), // TODO remove this
+        })
+        .collect::<Vec<proto::purchase::purchase_object::Item>>(),
+      upl_info_objects: Vec::new(),
+      need_invoice: match f.document_kind {
+        purchase::DocumentKind::Receipt => false,
+        purchase::DocumentKind::Invoice => true,
+      },
+      total_net: f.total_net,
+      total_vat: f.total_vat,
+      total_gross: f.total_gross,
+      payment_kind: match f.payment_kind {
+        purchase::PaymentKind::Cash => proto::purchase::PaymentKind::Cash,
+        purchase::PaymentKind::Card => proto::purchase::PaymentKind::Card,
+        purchase::PaymentKind::Transfer => proto::purchase::PaymentKind::Transfer,
+      } as i32,
+      payments: f
+        .payments
+        .iter()
+        .map(|p| proto::purchase::Payment {
+          payment_id: p.payment_id.clone(),
+          amount: p.amount,
+        })
+        .collect::<Vec<proto::purchase::Payment>>(),
+      payment_balance: f.balance,
+      profit_net: f.profit_net,
+      owner_uid: f.owner_uid,
+      store_id: f.store_id.unwrap_or(0),
+      date_completion: f.date_completion.to_rfc3339(),
+      payment_duedate: f.payment_duedate.to_rfc3339(),
+      restored: f.restored.is_some(),
+      created_by: f.created_by,
+      created_at: f.created_at.to_rfc3339(),
     }
   }
 }

@@ -6,9 +6,11 @@ use gzlib::proto::purchase::{
 use packman::*;
 use prelude::*;
 use proto::purchase::{
-  cart_object, CartAddCustomerReuqest, CartAddPaymentRequest, CartAddSkuRequest, CartAddUplRequest,
-  CartIds, CartInfoObject, CartObject, CartRemoveCustomerRequest, CartRemoveSkuRequest,
-  CartRemoveUplRequest, CartSetPaymentRequest, CartSetSkuPieceRequest, PurchaseInfoObject,
+  CartAddCustomerReuqest, CartAddPaymentRequest, CartAddSkuRequest, CartAddUplRequest,
+  CartCloseRequest, CartIds, CartInfoObject, CartObject, CartRemoveCustomerRequest,
+  CartRemoveSkuRequest, CartRemoveUplRequest, CartSetOwnerRequest, CartSetPaymentRequest,
+  CartSetSkuPieceRequest, CartSetStoreRequest, PurchaseBulkRequest, PurchaseByIdRequest,
+  PurchaseIds, PurchaseInfoObject, PurchaseObject,
 };
 use std::error::Error;
 use std::path::PathBuf;
@@ -281,6 +283,111 @@ impl PurchaseService {
       .clone();
     Ok(res.into())
   }
+
+  async fn cart_set_owner(&self, r: CartSetOwnerRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id)?)?
+      .as_mut()
+      .unpack()
+      .set_owner(r.owner_uid)
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_set_store(&self, r: CartSetStoreRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id)?)?
+      .as_mut()
+      .unpack()
+      .set_store_id(if r.store_id == 0 {
+        None
+      } else {
+        Some(r.store_id)
+      })
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_close(&self, r: CartCloseRequest) -> ServiceResult<CartObject> {
+    // Try to close cart!
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.cart_id.clone())?)?
+      .as_mut()
+      .unpack()
+      .close_cart()
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+
+    let purchase: purchase::Purchase = res.clone().into();
+
+    // Convert it to purchase and save it!
+    self.purchases.lock().await.insert(purchase)?;
+
+    // Remove cart finally
+    self
+      .carts
+      .lock()
+      .await
+      .remove_pack(&string_to_uuid(r.cart_id)?)?;
+
+    Ok(res.into())
+  }
+
+  async fn purchase_get_by_id(&self, r: PurchaseByIdRequest) -> ServiceResult<PurchaseObject> {
+    let res = self
+      .purchases
+      .lock()
+      .await
+      .find_id_mut(&string_to_uuid(r.purchase_id)?)?
+      .as_mut()
+      .unpack()
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn purchase_get_all(&self) -> ServiceResult<Vec<String>> {
+    let res = self
+      .purchases
+      .lock()
+      .await
+      .iter()
+      .map(|p| p.unpack().id.to_string())
+      .collect::<Vec<String>>();
+    Ok(res)
+  }
+
+  async fn purchase_get_info_bulk(
+    &self,
+    r: PurchaseBulkRequest,
+  ) -> ServiceResult<Vec<PurchaseInfoObject>> {
+    // Transform bulk IDS to Uuid vector
+    let mut ids: Vec<Uuid> = Vec::new();
+    for id in r.purchase_ids {
+      ids.push(
+        Uuid::from_str(&id).map_err(|_| ServiceError::BadRequest("A kért ID hibás".to_string()))?,
+      );
+    }
+
+    let res = self
+      .purchases
+      .lock()
+      .await
+      .iter()
+      .filter(|p| ids.contains(&p.unpack().id))
+      .map(|p| p.unpack().clone().into())
+      .collect::<Vec<PurchaseInfoObject>>();
+
+    Ok(res.into())
+  }
 }
 
 #[tonic::async_trait]
@@ -415,21 +522,24 @@ impl Purchase for PurchaseService {
     &self,
     request: Request<proto::purchase::CartSetOwnerRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_set_owner(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_set_store(
     &self,
     request: Request<proto::purchase::CartSetStoreRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_set_store(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_close(
     &self,
     request: Request<proto::purchase::CartCloseRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_close(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_remove(
@@ -443,14 +553,16 @@ impl Purchase for PurchaseService {
     &self,
     request: Request<proto::purchase::PurchaseByIdRequest>,
   ) -> Result<Response<proto::purchase::PurchaseObject>, Status> {
-    todo!()
+    let res = self.purchase_get_by_id(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn purchase_get_all(
     &self,
     request: Request<()>,
   ) -> Result<Response<proto::purchase::PurchaseIds>, Status> {
-    todo!()
+    let purchase_ids = self.purchase_get_all().await?;
+    Ok(Response::new(PurchaseIds { purchase_ids }))
   }
 
   type PurchaseGetInfoBulkStream = tokio::sync::mpsc::Receiver<Result<PurchaseInfoObject, Status>>;
@@ -459,7 +571,21 @@ impl Purchase for PurchaseService {
     &self,
     request: Request<proto::purchase::PurchaseBulkRequest>,
   ) -> Result<Response<Self::PurchaseGetInfoBulkStream>, Status> {
-    todo!()
+    // Create channel for stream response
+    let (mut tx, rx) = tokio::sync::mpsc::channel(100);
+
+    // Get resources as Vec<SourceObject>
+    let res = self.purchase_get_info_bulk(request.into_inner()).await?;
+
+    // Send the result items through the channel
+    tokio::spawn(async move {
+      for ots in res.into_iter() {
+        tx.send(Ok(ots)).await.unwrap();
+      }
+    });
+
+    // Send back the receiver
+    Ok(Response::new(rx))
   }
 
   async fn puchase_create_invoice(

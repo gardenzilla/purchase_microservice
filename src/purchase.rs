@@ -19,6 +19,7 @@ pub struct Purchase {
   pub document_kind: DocumentKind,          // Receipt or Invoice
   pub payment_kind: PaymentKind,            // cash, transfer, card
   pub payments: Vec<Payment>,               // Payment vector
+  pub balance: i32,                         // Payment balance
   pub profit_net: i32,                      // Net profit
   pub owner_uid: u32,                       // Shop assistant UID
   pub store_id: Option<u32>,                // Now its stock ID
@@ -43,6 +44,7 @@ impl Default for Purchase {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::new(),
+      balance: 0,
       profit_net: 0,
       owner_uid: 0,
       store_id: None,
