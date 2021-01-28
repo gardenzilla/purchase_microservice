@@ -138,7 +138,7 @@ impl From<crate::cart::Cart> for CartObject {
         .shopping_list
         .iter()
         .map(|i| cart_object::Item {
-          kind: cart_object::ItemKind::Sku as i32,
+          sku: i.sku,
           name: i.name.clone(),
           piece: i.piece,
           retail_price_net: i.unit_price_net,

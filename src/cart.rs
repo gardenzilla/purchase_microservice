@@ -503,7 +503,7 @@ impl CartMethods for Cart {
         .sum::<u32>();
 
     // Set new total gross
-    self.total_net = self
+    self.total_gross = self
       .shopping_list
       .iter()
       .map(|i| i.total_price_gross)
