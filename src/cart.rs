@@ -2,7 +2,7 @@
 // SKU, Derived Product, Depreciated
 
 use chrono::prelude::*;
-use packman::VecPackMember;
+use packman::{TryFrom, VecPackMember};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -44,6 +44,8 @@ where
   fn set_owner(&mut self, owner_uid: u32) -> &Self;
   /// Set store id; where the cart physically located
   fn set_store_id(&mut self, store_id: Option<u32>) -> &Self;
+  /// Get payable amount
+  fn get_payable(&self) -> i32;
   /// Get cart current payment balance
   fn get_balance(&self) -> i32;
   /// Get cart current profit
@@ -72,6 +74,7 @@ pub struct Cart {
   pub document_kind: DocumentKind,      // Receipt or Invoice
   pub payment_kind: PaymentKind,        // cash, transfer, card
   pub payments: Vec<Payment>,           // Payment vector
+  pub payable: i32,                     // Payable amount
   pub owner_uid: u32,                   // Shop assistant UID
   pub store_id: Option<u32>,            // Now its stock ID
   pub date_completion: DateTime<Utc>,   // Invoice Completion date
@@ -96,6 +99,7 @@ impl Default for Cart {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::default(),
+      payable: 0,
       owner_uid: 0,
       store_id: None,
       date_completion: Utc::today().and_hms(0, 0, 0),
@@ -193,6 +197,10 @@ impl VecPackMember for Cart {
   }
 }
 
+impl TryFrom for Cart {
+  type TryFrom = crate::migration::cart::CartOld;
+}
+
 impl CartMethods for Cart {
   fn new(owner_uid: u32, store_id: Option<u32>, created_by: u32) -> Self {
     Self {
@@ -209,6 +217,7 @@ impl CartMethods for Cart {
       document_kind: DocumentKind::Receipt,
       payment_kind: PaymentKind::Cash,
       payments: Vec::default(),
+      payable: 0,
       owner_uid,
       store_id,
       date_completion: Utc::today().and_hms(0, 0, 0),
@@ -403,7 +412,11 @@ impl CartMethods for Cart {
   }
 
   fn get_balance(&self) -> i32 {
-    self.total_gross as i32 - self.get_payment_total()
+    self.payable - self.get_payment_total()
+  }
+
+  fn get_payable(&self) -> i32 {
+    self.payable
   }
 
   fn get_profit_net(&self) -> i32 {
@@ -516,6 +529,12 @@ impl CartMethods for Cart {
 
     // Set new total vat
     self.total_vat = self.total_gross - self.total_net;
+
+    // Set payable
+    self.payable = match self.payment_kind {
+      PaymentKind::Cash => crate::rounding::round_huf(self.total_gross as i32),
+      _ => self.total_gross as i32,
+    }
   }
 }
 

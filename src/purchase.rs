@@ -2,7 +2,7 @@
 // SKU, Derived Product, Depreciated
 
 use chrono::prelude::*;
-use packman::VecPackMember;
+use packman::{TryFrom, VecPackMember};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -19,6 +19,7 @@ pub struct Purchase {
   pub document_kind: DocumentKind,          // Receipt or Invoice
   pub payment_kind: PaymentKind,            // cash, transfer, card
   pub payments: Vec<Payment>,               // Payment vector
+  pub payable: i32,                         // Payable amount
   pub balance: i32,                         // Payment balance
   pub profit_net: i32,                      // Net profit
   pub owner_uid: u32,                       // Shop assistant UID
@@ -44,6 +45,7 @@ impl Default for Purchase {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::new(),
+      payable: 0,
       balance: 0,
       profit_net: 0,
       owner_uid: 0,
@@ -63,6 +65,10 @@ impl VecPackMember for Purchase {
   fn get_id(&self) -> &Self::Out {
     &self.id
   }
+}
+
+impl TryFrom for Purchase {
+  type TryFrom = crate::migration::purchase::PurchaseOld;
 }
 
 #[derive(Serialize, Deserialize, Clone)]

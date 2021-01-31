@@ -226,6 +226,7 @@ impl From<crate::cart::Cart> for CartObject {
           amount: p.amount,
         })
         .collect(),
+      payable: f.get_payable(),
       payment_balance: f.get_balance(),
       profit_net: f.get_profit_net(),
       owner_uid: f.owner_uid,
@@ -376,6 +377,7 @@ impl From<cart::Cart> for purchase::Purchase {
           amount: p.amount,
         })
         .collect(),
+      payable: f.get_payable(),
       balance: f.get_balance(),
       profit_net: f.get_profit_net(),
       owner_uid: f.owner_uid,
@@ -481,6 +483,7 @@ impl From<purchase::Purchase> for PurchaseObject {
           amount: p.amount,
         })
         .collect::<Vec<proto::purchase::Payment>>(),
+      payable: f.payable,
       payment_balance: f.balance,
       profit_net: f.profit_net,
       owner_uid: f.owner_uid,

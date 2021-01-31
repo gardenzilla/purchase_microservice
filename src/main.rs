@@ -22,8 +22,10 @@ use uuid::Uuid;
 use gzlib::proto;
 
 pub mod cart;
+pub mod migration;
 pub mod prelude;
 pub mod purchase;
+pub mod rounding;
 
 struct PurchaseService {
   carts: Mutex<VecPack<cart::Cart>>,
