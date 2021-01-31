@@ -411,6 +411,7 @@ impl From<purchase::Purchase> for PurchaseInfoObject {
       total_vat: f.total_vat,
       total_gross_price: f.total_gross,
       balance: f.balance,
+      payable: f.payable,
       document_invoice: match f.document_kind {
         purchase::DocumentKind::Receipt => false,
         purchase::DocumentKind::Invoice => true,
