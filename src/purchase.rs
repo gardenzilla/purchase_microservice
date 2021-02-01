@@ -67,10 +67,6 @@ impl VecPackMember for Purchase {
   }
 }
 
-impl TryFrom for Purchase {
-  type TryFrom = crate::migration::purchase::PurchaseOld;
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub enum DocumentKind {
   Receipt,

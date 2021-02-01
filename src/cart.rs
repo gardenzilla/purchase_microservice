@@ -197,10 +197,6 @@ impl VecPackMember for Cart {
   }
 }
 
-impl TryFrom for Cart {
-  type TryFrom = crate::migration::cart::CartOld;
-}
-
 impl CartMethods for Cart {
   fn new(owner_uid: u32, store_id: Option<u32>, created_by: u32) -> Self {
     Self {
