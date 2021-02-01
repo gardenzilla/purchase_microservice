@@ -389,6 +389,7 @@ impl CartMethods for Cart {
   fn set_payment(&mut self, payment_kind: PaymentKind) -> &Self {
     // TODO! Maybe some validation before set new value?
     self.payment_kind = payment_kind;
+    self.calculate_totals();
     self
   }
 
