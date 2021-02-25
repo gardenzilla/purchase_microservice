@@ -1,7 +1,7 @@
 // SKU to CART
 // SKU, Derived Product, Depreciated
 
-use crate::purchase::*;
+use crate::purchase::{self, *};
 use chrono::prelude::*;
 use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ pub struct PurchaseOld {
   pub document_kind: DocumentKind,          // Receipt or Invoice
   pub payment_kind: PaymentKind,            // cash, transfer, card
   pub payments: Vec<Payment>,               // Payment vector
+  pub payable: i32,                         // Payable amount
   pub balance: i32,                         // Payment balance
   pub profit_net: i32,                      // Net profit
   pub owner_uid: u32,                       // Shop assistant UID
@@ -29,34 +30,6 @@ pub struct PurchaseOld {
   pub restored: Option<Uuid>,               // Some(_) if its restored
   pub created_by: u32,                      // UID
   pub created_at: DateTime<Utc>,            // When cart created
-}
-
-impl From<PurchaseOld> for Purchase {
-  fn from(f: PurchaseOld) -> Self {
-    Self {
-      id: f.id,
-      customer: f.customer,
-      discount_percentage: f.discount_percentage,
-      items: f.items,
-      upl_info_objects: f.upl_info_objects,
-      total_net: f.total_net,
-      total_vat: f.total_vat,
-      total_gross: f.total_gross,
-      document_kind: f.document_kind,
-      payment_kind: f.payment_kind,
-      payments: f.payments,
-      payable: f.total_gross as i32,
-      balance: f.balance,
-      profit_net: f.profit_net,
-      owner_uid: f.owner_uid,
-      store_id: f.store_id,
-      date_completion: f.date_completion,
-      payment_duedate: f.payment_duedate,
-      restored: f.restored,
-      created_by: f.created_by,
-      created_at: f.created_at,
-    }
-  }
 }
 
 impl Default for PurchaseOld {
@@ -73,6 +46,7 @@ impl Default for PurchaseOld {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::new(),
+      payable: 0,
       balance: 0,
       profit_net: 0,
       owner_uid: 0,
@@ -91,5 +65,39 @@ impl VecPackMember for PurchaseOld {
 
   fn get_id(&self) -> &Self::Out {
     &self.id
+  }
+}
+
+impl From<PurchaseOld> for purchase::Purchase {
+  fn from(f: PurchaseOld) -> Self {
+    Self {
+      id: f.id,
+      customer: f.customer,
+      commitment: None,
+      commitment_discount_value: 0,
+      loyalty_card: None,
+      items: f.items,
+      upl_info_objects: f.upl_info_objects,
+      total_net: f.total_net,
+      total_vat: f.total_vat,
+      total_gross: f.total_gross,
+      document_kind: f.document_kind,
+      payment_kind: f.payment_kind,
+      payments: f.payments,
+      burned_points: Vec::new(),
+      burned_loyalty_points: 0,
+      payable: f.payable,
+      balance: f.balance,
+      profit_net: f.profit_net,
+      owner_uid: f.owner_uid,
+      store_id: f.store_id,
+      date_completion: f.date_completion,
+      payment_duedate: f.payment_duedate,
+      restored: f.restored,
+      invoice: None,
+      storno_invoice: None,
+      created_by: f.created_by,
+      created_at: f.created_at,
+    }
   }
 }

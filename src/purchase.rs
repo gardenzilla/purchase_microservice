@@ -2,33 +2,55 @@
 // SKU, Derived Product, Depreciated
 
 use chrono::prelude::*;
-use packman::{TryFrom, VecPackMember};
+use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub trait PurchaseExt {
+  fn set_invoice_id(&mut self, invoice_id: String) -> Result<&Self, String>;
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Purchase {
-  pub id: Uuid,                             // Cart ID UUID?
-  pub customer: Option<Customer>,           // Only if there is any related one
-  pub discount_percentage: Option<u32>,     // Applied discount
-  pub items: Vec<Item>,                     // Cart items (All items: shopping list + unique)
-  pub upl_info_objects: Vec<UplInfoObject>, // ALL UPL info objects
-  pub total_net: u32,                       // Total cart net value in HUF
-  pub total_vat: u32,                       // Total VAT
-  pub total_gross: u32,                     // Total cart gross value in HUF
-  pub document_kind: DocumentKind,          // Receipt or Invoice
-  pub payment_kind: PaymentKind,            // cash, transfer, card
-  pub payments: Vec<Payment>,               // Payment vector
-  pub payable: i32,                         // Payable amount
-  pub balance: i32,                         // Payment balance
-  pub profit_net: i32,                      // Net profit
-  pub owner_uid: u32,                       // Shop assistant UID
-  pub store_id: Option<u32>,                // Now its stock ID
-  pub date_completion: DateTime<Utc>,       // Completion date
-  pub payment_duedate: DateTime<Utc>,       // Payment duedate
-  pub restored: Option<Uuid>,               // Some(_) if its restored
-  pub created_by: u32,                      // UID
-  pub created_at: DateTime<Utc>,            // When cart created
+  pub id: Uuid,                               // Cart ID UUID?
+  pub customer: Option<Customer>,             // Only if there is any related one
+  pub commitment: Option<Commitment>,         // Applied customer commitment
+  pub commitment_discount_value: u32,         //
+  pub loyalty_card: Option<LoyaltyCard>,      // Applied loyalty card
+  pub items: Vec<Item>,                       // Cart items (All items: shopping list + unique)
+  pub upl_info_objects: Vec<UplInfoObject>,   // ALL UPL info objects
+  pub total_net: u32,                         // Total cart net value in HUF
+  pub total_vat: u32,                         // Total VAT
+  pub total_gross: u32,                       // Total cart gross value in HUF
+  pub document_kind: DocumentKind,            // Receipt or Invoice
+  pub payment_kind: PaymentKind,              // cash, transfer, card
+  pub payments: Vec<Payment>,                 // Payment vector
+  pub burned_points: Vec<LoyaltyTransaction>, // Burned payment points
+  pub burned_loyalty_points: u32,             // Burned loyalty points total (gross)
+  pub payable: i32,                           // Payable amount
+  pub balance: i32,                           // Payment balance
+  pub profit_net: i32,                        // Net profit
+  pub owner_uid: u32,                         // Shop assistant UID
+  pub store_id: Option<u32>,                  // Now its stock ID
+  pub date_completion: DateTime<Utc>,         // Completion date
+  pub payment_duedate: DateTime<Utc>,         // Payment duedate
+  pub restored: Option<Uuid>,                 // Some(_) if its restored
+  pub invoice: Option<String>,                // Invoice
+  pub storno_invoice: Option<String>,         // Storno invoice
+  pub created_by: u32,                        // UID
+  pub created_at: DateTime<Utc>,              // When cart created
+}
+
+impl PurchaseExt for Purchase {
+  fn set_invoice_id(&mut self, invoice_id: String) -> Result<&Self, String> {
+    match self.invoice {
+      Some(_) => Err("A vásárlás már rendelkezik számlával".to_string()),
+      None => {
+        self.invoice = Some(invoice_id);
+        Ok(self)
+      }
+    }
+  }
 }
 
 impl Default for Purchase {
@@ -36,7 +58,9 @@ impl Default for Purchase {
     Self {
       id: Uuid::default(),
       customer: None,
-      discount_percentage: None,
+      commitment: None,
+      commitment_discount_value: 0,
+      loyalty_card: None,
       items: Vec::new(),
       upl_info_objects: Vec::new(),
       total_net: 0,
@@ -45,6 +69,8 @@ impl Default for Purchase {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::new(),
+      burned_points: Vec::new(),
+      burned_loyalty_points: 0,
       payable: 0,
       balance: 0,
       profit_net: 0,
@@ -53,6 +79,8 @@ impl Default for Purchase {
       date_completion: Utc::today().and_hms(0, 0, 0),
       payment_duedate: Utc::today().and_hms(0, 0, 0),
       restored: None,
+      invoice: None,
+      storno_invoice: None,
       created_by: 0,
       created_at: Utc::now(),
     }
@@ -217,5 +245,77 @@ pub enum UplKind {
 impl Default for UplKind {
   fn default() -> Self {
     Self::Sku { sku: 0, piece: 0 }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Commitment {
+  pub commitment_id: Uuid,
+  pub commitment_percentage: u32,
+}
+
+impl Default for Commitment {
+  fn default() -> Self {
+    Self {
+      commitment_id: Uuid::default(),
+      commitment_percentage: 0,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum LoyaltyLevel {
+  L1,
+  L2,
+}
+
+impl ToString for LoyaltyLevel {
+  fn to_string(&self) -> String {
+    match self {
+      LoyaltyLevel::L1 => "L1".to_string(),
+      LoyaltyLevel::L2 => "L2".to_string(),
+    }
+  }
+}
+
+impl Default for LoyaltyLevel {
+  fn default() -> Self {
+    Self::L1
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct LoyaltyCard {
+  pub account_id: Uuid,    // Loyalty account ID
+  pub card_id: String,     // Loyalty card ID
+  pub level: LoyaltyLevel, // L1 | L2
+}
+
+impl Default for LoyaltyCard {
+  fn default() -> Self {
+    Self {
+      account_id: Uuid::default(),
+      card_id: String::default(),
+      level: LoyaltyLevel::default(),
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct LoyaltyTransaction {
+  pub loyalty_account_id: Uuid,
+  pub transaction_id: Uuid,
+  pub burned_points: i32,
+  pub created_at: DateTime<Utc>,
+}
+
+impl Default for LoyaltyTransaction {
+  fn default() -> Self {
+    Self {
+      loyalty_account_id: Uuid::default(),
+      transaction_id: Uuid::default(),
+      burned_points: 0,
+      created_at: Utc::now(),
+    }
   }
 }

@@ -22,6 +22,7 @@ pub struct CartOld {
   pub document_kind: DocumentKind,      // Receipt or Invoice
   pub payment_kind: PaymentKind,        // cash, transfer, card
   pub payments: Vec<Payment>,           // Payment vector
+  pub payable: i32,                     // Payable amount
   pub owner_uid: u32,                   // Shop assistant UID
   pub store_id: Option<u32>,            // Now its stock ID
   pub date_completion: DateTime<Utc>,   // Invoice Completion date
@@ -46,6 +47,7 @@ impl Default for CartOld {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::default(),
+      payable: 0,
       owner_uid: 0,
       store_id: None,
       date_completion: Utc::today().and_hms(0, 0, 0),
@@ -70,7 +72,6 @@ impl From<CartOld> for Cart {
       ancestor: f.ancestor,
       id: f.id,
       customer: f.customer,
-      discount_percentage: f.discount_percentage,
       shopping_list: f.shopping_list,
       upls_sku: f.upls_sku,
       upls_unique: f.upls_unique,
@@ -80,13 +81,17 @@ impl From<CartOld> for Cart {
       document_kind: f.document_kind,
       payment_kind: f.payment_kind,
       payments: f.payments,
-      payable: f.total_gross as i32,
+      payable: f.payable,
       owner_uid: f.owner_uid,
       store_id: f.store_id,
       date_completion: f.date_completion,
       payment_duedate: f.payment_duedate,
       created_by: f.created_by,
       created_at: f.created_at,
+      commitment: None,
+      commitment_discount_value: 0,
+      loyalty_card: None,
+      burned_points: Vec::new(),
     }
   }
 }

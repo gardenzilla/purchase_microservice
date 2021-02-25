@@ -67,7 +67,7 @@ where
   /// Try to remove loyalty card
   fn remove_loyalty_card(&mut self) -> Result<&Self, String>;
   /// Get burned loyalty points balance
-  fn get_burned_points_balance(&self) -> Result<u32, String>;
+  fn get_burned_points_balance(&self) -> u32;
   /// Burn points
   fn burn_points(
     &mut self,
@@ -149,8 +149,17 @@ impl Default for Cart {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Commitment {
-  commitment_id: Uuid,
-  commitment_percentage: u32,
+  pub commitment_id: Uuid,
+  pub commitment_percentage: u32,
+}
+
+impl Default for Commitment {
+  fn default() -> Self {
+    Self {
+      commitment_id: Uuid::default(),
+      commitment_percentage: 0,
+    }
+  }
 }
 
 impl Commitment {
@@ -171,6 +180,15 @@ pub enum LoyaltyLevel {
 impl Default for LoyaltyLevel {
   fn default() -> Self {
     Self::L1
+  }
+}
+
+impl ToString for LoyaltyLevel {
+  fn to_string(&self) -> String {
+    match self {
+      LoyaltyLevel::L1 => "L1".to_string(),
+      LoyaltyLevel::L2 => "L2".to_string(),
+    }
   }
 }
 
@@ -213,10 +231,10 @@ impl LoyaltyCard {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct LoyaltyTransaction {
-  loyalty_account_id: Uuid,
-  transaction_id: Uuid,
-  burned_points: i32,
-  created_at: DateTime<Utc>,
+  pub loyalty_account_id: Uuid,
+  pub transaction_id: Uuid,
+  pub burned_points: i32,
+  pub created_at: DateTime<Utc>,
 }
 
 impl Default for LoyaltyTransaction {
@@ -626,12 +644,12 @@ impl CartMethods for Cart {
     // Set new total net
     self.total_net = self.get_items_total_net()
       - (self.get_commitment_discount_value() as f32 / 1.27).round() as u32
-      - (self.get_burned_points_balance().unwrap_or(0) as f32 / 1.27).round() as u32;
+      - (self.get_burned_points_balance() as f32 / 1.27).round() as u32;
 
     // Set new total gross
     self.total_gross = self.get_items_total_gross()
       - self.get_commitment_discount_value()
-      - self.get_burned_points_balance().unwrap_or(0);
+      - self.get_burned_points_balance();
 
     // Set new total vat
     self.total_vat = self.total_gross - self.total_net;
@@ -652,7 +670,7 @@ impl CartMethods for Cart {
     card_id: String,
     loyalty_level: LoyaltyLevel,
   ) -> Result<&Self, String> {
-    match self.loyalty_card {
+    match &self.loyalty_card {
       Some(card) => Err(
         "A kosárhoz már van kedvezmény kártya rendelve! Törölje azt, mielőtt másikat adna hozzá!"
           .to_string(),
@@ -668,7 +686,7 @@ impl CartMethods for Cart {
     if self.loyalty_card.is_none() {
       return Err("A kosárhoz nincs kártya rendelve, így azt nem lehet törölni!".to_string());
     }
-    match self.get_burned_points_balance()? == 0 {
+    match self.get_burned_points_balance() == 0 {
       true => {
         // Remove loyalty card
         self.loyalty_card = None;
@@ -689,7 +707,7 @@ impl CartMethods for Cart {
     if points_to_burn < 0 {
       // If we want to get out more points that we have in
       // return error
-      if self.get_burned_points_balance()? < points_to_burn.abs() as u32 {
+      if self.get_burned_points_balance() < points_to_burn.abs() as u32 {
         return Err(
           "Több pontot szeretnénk kivenni a kosárból, mint amennyit felhasználtunk hozzá!"
             .to_string(),
@@ -751,22 +769,19 @@ impl CartMethods for Cart {
     Ok(self)
   }
 
-  fn get_burned_points_balance(&self) -> Result<u32, String> {
+  fn get_burned_points_balance(&self) -> u32 {
     match self
       .burned_points
       .iter()
       .fold(0, |acc, t| acc + t.burned_points)
     {
-      x if x > 0 => Ok(x as u32),
-      _ => Err(
-        "A felhasznált törzsvásárlói pontok egyenlege kisebb, mint nulla. Rendszerhiba."
-          .to_string(),
-      ),
+      x if x > 0 => x as u32,
+      _ => 0,
     }
   }
 
   fn get_commitment_discount_value(&self) -> u32 {
-    match self.commitment {
+    match &self.commitment {
       Some(commitment) => {
         return (self.get_items_total_gross() as f32
           * (commitment.commitment_percentage as f32 / 100.0))

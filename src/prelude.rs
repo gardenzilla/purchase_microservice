@@ -2,8 +2,8 @@ use chrono::Utc;
 use gzlib::proto::{
   self,
   purchase::{
-    cart_object, upl_info_object, CartInfoObject, CartObject, Customer, Payment, PaymentKind,
-    PurchaseInfoObject, PurchaseObject, UplInfoObject,
+    cart_object, upl_info_object, CartInfoObject, CartObject, Customer, LoyaltyTransaction,
+    Payment, PaymentKind, PurchaseInfoObject, PurchaseObject, UplInfoObject,
   },
 };
 use proto::purchase::purchase_object;
@@ -11,7 +11,7 @@ use upl_info_object::{UplKindOpenedSku, UplKindSku};
 
 use crate::{
   cart::{self, CartMethods},
-  purchase,
+  purchase::{self},
 };
 
 pub enum ServiceError {
@@ -133,7 +133,6 @@ impl From<crate::cart::Cart> for CartObject {
         }),
         None => None,
       },
-      discount_percentage: f.discount_percentage.unwrap_or(0),
       shopping_list: f
         .shopping_list
         .iter()
@@ -235,6 +234,53 @@ impl From<crate::cart::Cart> for CartObject {
       payment_duedate: f.payment_duedate.to_rfc3339(),
       created_by: f.created_by,
       created_at: f.created_at.to_rfc3339(),
+      commitment_id: match f.commitment.clone() {
+        Some(c) => c.commitment_id.to_string(),
+        None => "".to_string(),
+      },
+      commitment_discount_percentage: match f.commitment.clone() {
+        Some(c) => c.commitment_percentage,
+        None => 0,
+      },
+      loyalty_card_id: match f.loyalty_card.clone() {
+        Some(lc) => lc.card_id,
+        None => "".to_string(),
+      },
+      loyalty_account_id: match f.loyalty_card.clone() {
+        Some(lc) => lc.account_id.to_string(),
+        None => "".to_string(),
+      },
+      loyalty_level: match f.loyalty_card.clone() {
+        Some(lc) => lc.level.to_string(),
+        None => "".to_string(),
+      },
+      commitment_discount_amount_gross: f.commitment_discount_value,
+      burned_loyalty_points: f.get_burned_points_balance(),
+      burned_points: f
+        .burned_points
+        .into_iter()
+        .map(|t| t.into())
+        .collect::<Vec<LoyaltyTransaction>>(),
+    }
+  }
+}
+
+impl From<cart::LoyaltyTransaction> for LoyaltyTransaction {
+  fn from(f: cart::LoyaltyTransaction) -> Self {
+    Self {
+      loyalty_account_id: f.loyalty_account_id.to_string(),
+      transaction_id: f.transaction_id.to_string(),
+      burned_points: f.burned_points,
+    }
+  }
+}
+
+impl From<purchase::LoyaltyTransaction> for LoyaltyTransaction {
+  fn from(f: purchase::LoyaltyTransaction) -> Self {
+    Self {
+      loyalty_account_id: f.loyalty_account_id.to_string(),
+      transaction_id: f.transaction_id.to_string(),
+      burned_points: f.burned_points,
     }
   }
 }
@@ -354,7 +400,6 @@ impl From<cart::Cart> for purchase::Purchase {
         }),
         None => None,
       },
-      discount_percentage: f.discount_percentage,
       items: items,
       upl_info_objects: upls,
       total_net: f.total_net,
@@ -386,6 +431,45 @@ impl From<cart::Cart> for purchase::Purchase {
       payment_duedate: Utc::today().and_hms(0, 0, 0), // TODO! refact to manage duedate for inv.
       restored: None,
       created_by: f.created_by,
+      created_at: f.created_at,
+      commitment: match f.commitment.clone() {
+        Some(c) => Some(purchase::Commitment {
+          commitment_id: c.commitment_id,
+          commitment_percentage: c.commitment_percentage,
+        }),
+        None => None,
+      },
+      commitment_discount_value: f.commitment_discount_value,
+      loyalty_card: match f.loyalty_card.clone() {
+        Some(lc) => Some(purchase::LoyaltyCard {
+          account_id: lc.account_id,
+          card_id: lc.card_id,
+          level: match lc.level {
+            cart::LoyaltyLevel::L1 => purchase::LoyaltyLevel::L1,
+            cart::LoyaltyLevel::L2 => purchase::LoyaltyLevel::L2,
+          },
+        }),
+        None => None,
+      },
+      burned_points: f
+        .burned_points
+        .clone()
+        .into_iter()
+        .map(|tr| tr.into())
+        .collect::<Vec<purchase::LoyaltyTransaction>>(),
+      invoice: None,
+      storno_invoice: None,
+      burned_loyalty_points: f.get_burned_points_balance(),
+    }
+  }
+}
+
+impl From<cart::LoyaltyTransaction> for purchase::LoyaltyTransaction {
+  fn from(f: cart::LoyaltyTransaction) -> Self {
+    Self {
+      loyalty_account_id: f.loyalty_account_id,
+      transaction_id: f.transaction_id,
+      burned_points: f.burned_points,
       created_at: f.created_at,
     }
   }
@@ -442,7 +526,6 @@ impl From<purchase::Purchase> for PurchaseObject {
         }),
         None => None,
       },
-      discount_percentage: f.discount_percentage.unwrap_or(0),
       items: f
         .items
         .iter()
@@ -494,6 +577,33 @@ impl From<purchase::Purchase> for PurchaseObject {
       restored: f.restored.is_some(),
       created_by: f.created_by,
       created_at: f.created_at.to_rfc3339(),
+      commitment_id: match f.commitment.clone() {
+        Some(c) => c.commitment_id.to_string(),
+        None => "".to_string(),
+      },
+      commitment_discount_percentage: match f.commitment.clone() {
+        Some(c) => c.commitment_percentage,
+        None => 0,
+      },
+      commitment_discount_amount_gross: f.commitment_discount_value,
+      loyalty_card_id: match f.loyalty_card.clone() {
+        Some(lc) => lc.card_id,
+        None => "".to_string(),
+      },
+      loyalty_account_id: match f.loyalty_card.clone() {
+        Some(lc) => lc.account_id.to_string(),
+        None => "".to_string(),
+      },
+      loyalty_level: match f.loyalty_card.clone() {
+        Some(lc) => lc.level.to_string(),
+        None => "".to_string(),
+      },
+      burned_loyalty_points: f.burned_loyalty_points,
+      burned_points: f
+        .burned_points
+        .into_iter()
+        .map(|tr| tr.into())
+        .collect::<Vec<LoyaltyTransaction>>(),
     }
   }
 }

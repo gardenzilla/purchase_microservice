@@ -617,6 +617,48 @@ impl Purchase for PurchaseService {
   ) -> Result<Response<proto::purchase::PurchaseStatResponse>, Status> {
     todo!()
   }
+
+  async fn cart_loyalty_card_add(
+    &self,
+    request: Request<proto::purchase::E>,
+  ) -> Result<Response<CartObject>, Status> {
+    todo!()
+  }
+
+  async fn cart_loyalty_card_remove(
+    &self,
+    request: Request<proto::purchase::E>,
+  ) -> Result<Response<CartObject>, Status> {
+    todo!()
+  }
+
+  async fn cart_burn_points(
+    &self,
+    request: Request<proto::purchase::BurnPointsRequest>,
+  ) -> Result<Response<CartObject>, Status> {
+    todo!()
+  }
+
+  async fn cart_commitment_add(
+    &self,
+    request: Request<proto::purchase::AddCommitmentRequest>,
+  ) -> Result<Response<CartObject>, Status> {
+    todo!()
+  }
+
+  async fn cart_commitment_remove(
+    &self,
+    request: Request<proto::purchase::RemoveCommitmentRequest>,
+  ) -> Result<Response<CartObject>, Status> {
+    todo!()
+  }
+
+  async fn purchase_set_invoice_id(
+    &self,
+    request: Request<proto::purchase::PurchaseSetInvoiceIdRequest>,
+  ) -> Result<Response<PurchaseObject>, Status> {
+    todo!()
+  }
 }
 
 #[tokio::main]
