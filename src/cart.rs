@@ -2,7 +2,7 @@
 // SKU, Derived Product, Depreciated
 
 use chrono::prelude::*;
-use packman::{TryFrom, VecPackMember};
+use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -57,30 +57,64 @@ where
   ///   SKU / UPL ok
   ///   Payment OK (Cash / Card and Payment OK)
   fn close_cart(&mut self) -> Result<&Self, String>;
+  /// Add loyalty card to the cart
+  fn add_loyalty_card(
+    &mut self,
+    account_id: Uuid,
+    card_id: String,
+    loyalty_level: LoyaltyLevel,
+  ) -> Result<&Self, String>;
+  /// Try to remove loyalty card
+  fn remove_loyalty_card(&mut self) -> Result<&Self, String>;
+  /// Get burned loyalty points balance
+  fn get_burned_points_balance(&self) -> Result<u32, String>;
+  /// Burn points
+  fn burn_points(
+    &mut self,
+    loyalty_account_id: Uuid,
+    transaction_id: Uuid,
+    points_to_burn: i32,
+  ) -> Result<&Self, String>;
+  /// Add commitment to cart
+  fn add_commitment(
+    &mut self,
+    commitment_id: Uuid,
+    discount_percentage: u32,
+  ) -> Result<&Self, String>;
+  /// Remove commitment from cart
+  fn remove_commitment(&mut self) -> Result<&Self, String>;
+  /// Get the given discount based on the commitment
+  fn get_commitment_discount_value(&self) -> u32;
+  fn get_items_total_net(&self) -> u32;
+  fn get_items_total_gross(&self) -> u32;
+  fn get_items_total_vat(&self) -> u32;
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Cart {
-  pub ancestor: Option<Uuid>,           // If this is a restored Cart
-  pub id: Uuid,                         // Cart ID UUID?
-  pub customer: Option<Customer>,       // Only if there is any related one
-  pub discount_percentage: Option<u32>, // Discount in percentage 20% => 20
-  pub shopping_list: Vec<ListItem>,     // Shopping list
-  pub upls_sku: Vec<UplInfoObject>,     // UPLs that are healty
-  pub upls_unique: Vec<UplInfoObject>,  // Upls that are depreciated or opened
-  pub total_net: u32,                   // Total cart net value in HUF
-  pub total_vat: u32,                   // Total VAT
-  pub total_gross: u32,                 // Total cart gross value in HUF
-  pub document_kind: DocumentKind,      // Receipt or Invoice
-  pub payment_kind: PaymentKind,        // cash, transfer, card
-  pub payments: Vec<Payment>,           // Payment vector
-  pub payable: i32,                     // Payable amount
-  pub owner_uid: u32,                   // Shop assistant UID
-  pub store_id: Option<u32>,            // Now its stock ID
-  pub date_completion: DateTime<Utc>,   // Invoice Completion date
-  pub payment_duedate: DateTime<Utc>,   // Invoice Payment duedate
-  pub created_by: u32,                  // UID
-  pub created_at: DateTime<Utc>,        // When cart created
+  pub ancestor: Option<Uuid>,                 // If this is a restored Cart
+  pub id: Uuid,                               // Cart ID UUID?
+  pub customer: Option<Customer>,             // Only if there is any related one
+  pub commitment: Option<Commitment>,         // Applied customer commitment
+  pub commitment_discount_value: u32,         // Commitment value
+  pub loyalty_card: Option<LoyaltyCard>,      // Applied loyalty card
+  pub shopping_list: Vec<ListItem>,           // Shopping list
+  pub upls_sku: Vec<UplInfoObject>,           // UPLs that are healty
+  pub upls_unique: Vec<UplInfoObject>,        // Upls that are depreciated or opened
+  pub total_net: u32,                         // Total cart net value in HUF
+  pub total_vat: u32,                         // Total VAT
+  pub total_gross: u32,                       // Total cart gross value in HUF
+  pub document_kind: DocumentKind,            // Receipt or Invoice
+  pub payment_kind: PaymentKind,              // cash, transfer, card
+  pub payments: Vec<Payment>,                 // Payment vector
+  pub burned_points: Vec<LoyaltyTransaction>, // Burned payment points
+  pub payable: i32,                           // Payable amount
+  pub owner_uid: u32,                         // Shop assistant UID
+  pub store_id: Option<u32>,                  // Now its stock ID
+  pub date_completion: DateTime<Utc>,         // Invoice Completion date
+  pub payment_duedate: DateTime<Utc>,         // Invoice Payment duedate
+  pub created_by: u32,                        // UID
+  pub created_at: DateTime<Utc>,              // When cart created
 }
 
 impl Default for Cart {
@@ -89,7 +123,9 @@ impl Default for Cart {
       ancestor: None,
       id: Uuid::default(),
       customer: None,
-      discount_percentage: None,
+      commitment: None,
+      commitment_discount_value: 0,
+      loyalty_card: None,
       shopping_list: Vec::new(),
       upls_sku: Vec::new(),
       upls_unique: Vec::new(),
@@ -99,12 +135,96 @@ impl Default for Cart {
       document_kind: DocumentKind::default(),
       payment_kind: PaymentKind::default(),
       payments: Vec::default(),
+      burned_points: Vec::default(),
       payable: 0,
       owner_uid: 0,
       store_id: None,
       date_completion: Utc::today().and_hms(0, 0, 0),
       payment_duedate: Utc::today().and_hms(0, 0, 0),
       created_by: 0,
+      created_at: Utc::now(),
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Commitment {
+  commitment_id: Uuid,
+  commitment_percentage: u32,
+}
+
+impl Commitment {
+  pub fn new(commitment_id: Uuid, commitment_percentage: u32) -> Self {
+    Self {
+      commitment_id,
+      commitment_percentage,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum LoyaltyLevel {
+  L1,
+  L2,
+}
+
+impl Default for LoyaltyLevel {
+  fn default() -> Self {
+    Self::L1
+  }
+}
+
+impl LoyaltyLevel {
+  pub fn from_str(str: &str) -> Result<Self, String> {
+    match str {
+      "l1" | "L1" => Ok(Self::L1),
+      "l2" | "L2" => Ok(Self::L2),
+      _ => Err("Ismeretlen kedvezmény kártya szint. L1 | L2".to_string()),
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct LoyaltyCard {
+  pub account_id: Uuid,    // Loyalty account ID
+  pub card_id: String,     // Loyalty card ID
+  pub level: LoyaltyLevel, // L1 | L2
+}
+
+impl Default for LoyaltyCard {
+  fn default() -> Self {
+    Self {
+      account_id: Uuid::default(),
+      card_id: String::default(),
+      level: LoyaltyLevel::default(),
+    }
+  }
+}
+
+impl LoyaltyCard {
+  pub fn new(account_id: Uuid, card_id: String, level: LoyaltyLevel) -> Self {
+    Self {
+      account_id,
+      card_id,
+      level,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct LoyaltyTransaction {
+  loyalty_account_id: Uuid,
+  transaction_id: Uuid,
+  burned_points: i32,
+  created_at: DateTime<Utc>,
+}
+
+impl Default for LoyaltyTransaction {
+  fn default() -> Self {
+    Self {
+      loyalty_account_id: Uuid::default(),
+      transaction_id: Uuid::default(),
+      burned_points: 0,
       created_at: Utc::now(),
     }
   }
@@ -203,7 +323,9 @@ impl CartMethods for Cart {
       ancestor: None,
       id: Uuid::new_v4(),
       customer: None,
-      discount_percentage: None,
+      commitment: None,
+      commitment_discount_value: 0,
+      loyalty_card: None,
       shopping_list: Vec::default(),
       upls_sku: Vec::default(),
       upls_unique: Vec::default(),
@@ -213,6 +335,7 @@ impl CartMethods for Cart {
       document_kind: DocumentKind::Receipt,
       payment_kind: PaymentKind::Cash,
       payments: Vec::default(),
+      burned_points: Vec::default(),
       payable: 0,
       owner_uid,
       store_id,
@@ -501,28 +624,14 @@ impl CartMethods for Cart {
 
   fn calculate_totals(&mut self) {
     // Set new total net
-    self.total_net = self
-      .shopping_list
-      .iter()
-      .map(|i| i.total_price_net)
-      .sum::<u32>()
-      + self
-        .upls_unique
-        .iter()
-        .map(|u| u.get_price_net())
-        .sum::<u32>();
+    self.total_net = self.get_items_total_net()
+      - (self.get_commitment_discount_value() as f32 / 1.27).round() as u32
+      - (self.get_burned_points_balance().unwrap_or(0) as f32 / 1.27).round() as u32;
 
     // Set new total gross
-    self.total_gross = self
-      .shopping_list
-      .iter()
-      .map(|i| i.total_price_gross)
-      .sum::<u32>()
-      + self
-        .upls_unique
-        .iter()
-        .map(|u| u.get_price_gross())
-        .sum::<u32>();
+    self.total_gross = self.get_items_total_gross()
+      - self.get_commitment_discount_value()
+      - self.get_burned_points_balance().unwrap_or(0);
 
     // Set new total vat
     self.total_vat = self.total_gross - self.total_net;
@@ -531,7 +640,170 @@ impl CartMethods for Cart {
     self.payable = match self.payment_kind {
       PaymentKind::Cash => crate::rounding::round_huf(self.total_gross as i32),
       _ => self.total_gross as i32,
+    };
+
+    // Set commitment discount value
+    self.commitment_discount_value = self.get_commitment_discount_value();
+  }
+
+  fn add_loyalty_card(
+    &mut self,
+    account_id: Uuid,
+    card_id: String,
+    loyalty_level: LoyaltyLevel,
+  ) -> Result<&Self, String> {
+    match self.loyalty_card {
+      Some(card) => Err(
+        "A kosárhoz már van kedvezmény kártya rendelve! Törölje azt, mielőtt másikat adna hozzá!"
+          .to_string(),
+      ),
+      None => {
+        self.loyalty_card = Some(LoyaltyCard::new(account_id, card_id, loyalty_level));
+        Ok(self)
+      }
     }
+  }
+
+  fn remove_loyalty_card(&mut self) -> Result<&Self, String> {
+    if self.loyalty_card.is_none() {
+      return Err("A kosárhoz nincs kártya rendelve, így azt nem lehet törölni!".to_string());
+    }
+    match self.get_burned_points_balance()? == 0 {
+      true => {
+        // Remove loyalty card
+        self.loyalty_card = None;
+        Ok(self)
+      }
+      false => Err("Kártyát akkor lehet törölni, ha a felhasznált pontok összege 0. Törölje a felhasznált pontokat!".to_string())
+    }
+  }
+
+  fn burn_points(
+    &mut self,
+    loyalty_account_id: Uuid,
+    transaction_id: Uuid,
+    points_to_burn: i32,
+  ) -> Result<&Self, String> {
+    // Check if we have enough points to remove
+    // if we want to remove
+    if points_to_burn < 0 {
+      // If we want to get out more points that we have in
+      // return error
+      if self.get_burned_points_balance()? < points_to_burn.abs() as u32 {
+        return Err(
+          "Több pontot szeretnénk kivenni a kosárból, mint amennyit felhasználtunk hozzá!"
+            .to_string(),
+        );
+      }
+    }
+
+    // Check if transaction is already in use
+    if self
+      .burned_points
+      .iter()
+      .find(|tr| tr.transaction_id == transaction_id)
+      .is_some()
+    {
+      return Err("A kért tranzakció már a felhasznált pontok között szerepel a kosárban, így nem adható hozzá ismét!".to_string());
+    }
+
+    // Burn points
+    self.burned_points.push(LoyaltyTransaction {
+      loyalty_account_id,
+      transaction_id,
+      burned_points: points_to_burn,
+      created_at: Utc::now(),
+    });
+
+    // Recalculate totals
+    self.calculate_totals();
+
+    // Return Ok self ref
+    Ok(self)
+  }
+
+  fn add_commitment(
+    &mut self,
+    commitment_id: Uuid,
+    commitment_percentage: u32,
+  ) -> Result<&Self, String> {
+    // Create commitment object
+    let new_commitment = Commitment::new(commitment_id, commitment_percentage);
+    // Set commitment
+    self.commitment = Some(new_commitment);
+    // Finally recalculate totals
+    self.calculate_totals();
+    // Return ok self ref
+    Ok(self)
+  }
+
+  fn remove_commitment(&mut self) -> Result<&Self, String> {
+    if self.commitment.is_none() {
+      return Err(
+        "A kosárhoz nincs hozzárendelt commitment, így azt nem lehet eltávolítani".to_string(),
+      );
+    }
+    // Remove commitment
+    self.commitment = None;
+    // Recalculate totals
+    self.calculate_totals();
+    // Return ok self ref
+    Ok(self)
+  }
+
+  fn get_burned_points_balance(&self) -> Result<u32, String> {
+    match self
+      .burned_points
+      .iter()
+      .fold(0, |acc, t| acc + t.burned_points)
+    {
+      x if x > 0 => Ok(x as u32),
+      _ => Err(
+        "A felhasznált törzsvásárlói pontok egyenlege kisebb, mint nulla. Rendszerhiba."
+          .to_string(),
+      ),
+    }
+  }
+
+  fn get_commitment_discount_value(&self) -> u32 {
+    match self.commitment {
+      Some(commitment) => {
+        return (self.get_items_total_gross() as f32
+          * (commitment.commitment_percentage as f32 / 100.0))
+          .round() as u32
+      }
+      None => 0,
+    }
+  }
+
+  fn get_items_total_net(&self) -> u32 {
+    self
+      .shopping_list
+      .iter()
+      .map(|i| i.total_price_net)
+      .sum::<u32>()
+      + self
+        .upls_unique
+        .iter()
+        .map(|u| u.get_price_net())
+        .sum::<u32>()
+  }
+
+  fn get_items_total_gross(&self) -> u32 {
+    self
+      .shopping_list
+      .iter()
+      .map(|i| i.total_price_gross)
+      .sum::<u32>()
+      + self
+        .upls_unique
+        .iter()
+        .map(|u| u.get_price_gross())
+        .sum::<u32>()
+  }
+
+  fn get_items_total_vat(&self) -> u32 {
+    self.get_items_total_gross() - self.get_items_total_net()
   }
 }
 
