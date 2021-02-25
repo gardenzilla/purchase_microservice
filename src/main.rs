@@ -1,7 +1,12 @@
 use cart::CartMethods;
 use chrono::{DateTime, Utc};
-use gzlib::proto::purchase::{
-  purchase_server::*, CartBulkRequest, CartByIdRequest, CartNewRequest,
+use gzlib::proto::{
+  loyalty::BurnRequest,
+  purchase::{
+    purchase_server::*, AddCommitmentRequest, BurnPointsRequest, CartBulkRequest, CartByIdRequest,
+    CartNewRequest, CartSetDocumentRequest, DocumentKind, LoyaltyCardAddRequest,
+    LoyaltyCardRemoveRequest, PurchaseSetInvoiceIdRequest, RemoveCommitmentRequest,
+  },
 };
 use packman::*;
 use prelude::*;
@@ -12,6 +17,7 @@ use proto::purchase::{
   CartSetSkuPieceRequest, CartSetStoreRequest, PurchaseBulkRequest, PurchaseByIdRequest,
   PurchaseIds, PurchaseInfoObject, PurchaseObject,
 };
+use purchase_microservice::purchase::PurchaseExt;
 use purchase_microservice::*;
 use std::error::Error;
 use std::path::PathBuf;
@@ -390,6 +396,142 @@ impl PurchaseService {
 
     Ok(res.into())
   }
+
+  async fn cart_set_document(&self, r: CartSetDocumentRequest) -> ServiceResult<CartObject> {
+    let document_kind: proto::purchase::DocumentKind = DocumentKind::from_i32(r.document_kind)
+      .ok_or(ServiceError::bad_request("dokumentum típus kódolási hiba"))?;
+
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(
+        &Uuid::from_str(&r.cart_id)
+          .map_err(|_| ServiceError::BadRequest("A kért kosár ID hibás".to_string()))?,
+      )?
+      .as_mut()
+      .unpack()
+      .set_document(match document_kind {
+        DocumentKind::Receipt => cart::DocumentKind::Receipt,
+        DocumentKind::Invoice => cart::DocumentKind::Invoice,
+      })
+      .clone();
+
+    Ok(res.into())
+  }
+
+  async fn purchase_set_invoice_id(
+    &self,
+    r: PurchaseSetInvoiceIdRequest,
+  ) -> ServiceResult<PurchaseObject> {
+    let res = self
+      .purchases
+      .lock()
+      .await
+      .find_id_mut(
+        &Uuid::from_str(&r.purchase_id)
+          .map_err(|_| ServiceError::BadRequest("A kért vásárlás ID hibás".to_string()))?,
+      )?
+      .as_mut()
+      .unpack()
+      .set_invoice_id(r.invoice_id)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_commitment_add(&self, r: AddCommitmentRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(
+        &Uuid::from_str(&r.cart_id)
+          .map_err(|_| ServiceError::BadRequest("A kért vásárlás ID hibás".to_string()))?,
+      )?
+      .as_mut()
+      .unpack()
+      .add_commitment(
+        Uuid::from_str(&r.commitment_id)
+          .map_err(|_| ServiceError::BadRequest("A kért vásárlás ID hibás".to_string()))?,
+        r.discount_percentage,
+      )
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_commitment_remove(&self, r: RemoveCommitmentRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&str_to_uuid(&r.cart_id, "A kért vásárlás ID hibás")?)?
+      .as_mut()
+      .unpack()
+      .remove_commitment()
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_loyalty_card_add(&self, r: LoyaltyCardAddRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&str_to_uuid(&r.cart_id, "A kért vásárlás ID hibás")?)?
+      .as_mut()
+      .unpack()
+      .add_loyalty_card(
+        str_to_uuid(&r.account_id, "A megadott törzsvásárlói fiók ID hibás")?,
+        r.card_id,
+        cart::LoyaltyLevel::from_str(&r.loyalty_level)
+          .map_err(|e| ServiceError::bad_request(&e))?,
+      )
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_loyalty_card_remove(
+    &self,
+    r: LoyaltyCardRemoveRequest,
+  ) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&str_to_uuid(&r.cart_id, "A kért vásárlás ID hibás")?)?
+      .as_mut()
+      .unpack()
+      .remove_loyalty_card()
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+
+  async fn cart_burn_points(&self, r: BurnPointsRequest) -> ServiceResult<CartObject> {
+    let res = self
+      .carts
+      .lock()
+      .await
+      .find_id_mut(&str_to_uuid(&r.cart_id, "A kért vásárlás ID hibás")?)?
+      .as_mut()
+      .unpack()
+      .burn_points(
+        str_to_uuid(&r.loyalty_account_id, "Hibás törzsvásárlói fiók ID")?,
+        str_to_uuid(&r.transaction_id, "Hibás tranzakció azonosító")?,
+        r.points_to_burn,
+      )
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
+}
+
+fn str_to_uuid(str: &str, error_msg: &str) -> ServiceResult<Uuid> {
+  Uuid::from_str(str).map_err(|_| ServiceError::bad_request(error_msg))
 }
 
 #[tonic::async_trait]
@@ -501,7 +643,8 @@ impl Purchase for PurchaseService {
     &self,
     request: Request<proto::purchase::CartSetDocumentRequest>,
   ) -> Result<Response<proto::purchase::CartObject>, Status> {
-    todo!()
+    let res = self.cart_set_document(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_set_payment(
@@ -620,44 +763,50 @@ impl Purchase for PurchaseService {
 
   async fn cart_loyalty_card_add(
     &self,
-    request: Request<proto::purchase::E>,
+    request: Request<proto::purchase::LoyaltyCardAddRequest>,
   ) -> Result<Response<CartObject>, Status> {
-    todo!()
+    let res = self.cart_loyalty_card_add(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_loyalty_card_remove(
     &self,
-    request: Request<proto::purchase::E>,
+    request: Request<proto::purchase::LoyaltyCardRemoveRequest>,
   ) -> Result<Response<CartObject>, Status> {
-    todo!()
+    let res = self.cart_loyalty_card_remove(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_burn_points(
     &self,
     request: Request<proto::purchase::BurnPointsRequest>,
   ) -> Result<Response<CartObject>, Status> {
-    todo!()
+    let res = self.cart_burn_points(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_commitment_add(
     &self,
     request: Request<proto::purchase::AddCommitmentRequest>,
   ) -> Result<Response<CartObject>, Status> {
-    todo!()
+    let res = self.cart_commitment_add(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn cart_commitment_remove(
     &self,
     request: Request<proto::purchase::RemoveCommitmentRequest>,
   ) -> Result<Response<CartObject>, Status> {
-    todo!()
+    let res = self.cart_commitment_remove(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn purchase_set_invoice_id(
     &self,
     request: Request<proto::purchase::PurchaseSetInvoiceIdRequest>,
   ) -> Result<Response<PurchaseObject>, Status> {
-    todo!()
+    let res = self.purchase_set_invoice_id(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 }
 
