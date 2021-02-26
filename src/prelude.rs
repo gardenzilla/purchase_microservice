@@ -500,6 +500,10 @@ impl From<purchase::Purchase> for PurchaseInfoObject {
         purchase::DocumentKind::Receipt => false,
         purchase::DocumentKind::Invoice => true,
       },
+      invoice_id: match f.invoice {
+        Some(invoice_id) => invoice_id,
+        None => "".to_string(),
+      },
       date_completion: f.date_completion.to_rfc3339(),
       payment_duedate: f.payment_duedate.to_rfc3339(),
       payment_expired: (f.payment_duedate.date() > Utc::today()),
@@ -550,6 +554,10 @@ impl From<purchase::Purchase> for PurchaseObject {
       need_invoice: match f.document_kind {
         purchase::DocumentKind::Receipt => false,
         purchase::DocumentKind::Invoice => true,
+      },
+      invoice_id: match f.invoice {
+        Some(invoice_id) => invoice_id,
+        None => "".to_string(),
       },
       total_net: f.total_net,
       total_vat: f.total_vat,
