@@ -572,6 +572,16 @@ impl CartMethods for Cart {
   }
 
   fn close_cart(&mut self) -> Result<&Self, String> {
+    // Check if document_kind::Invoice but no customer added
+    // return error
+    if let DocumentKind::Invoice = self.document_kind {
+      if self.customer.is_none() {
+        return Err(
+          "A kosár nem zárható le! Számlaigény van beállítva, de a vásárló üres!".to_string(),
+        );
+      }
+    }
+
     // Check items count match
     for item in &self.shopping_list {
       if item.piece
