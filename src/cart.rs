@@ -601,19 +601,14 @@ impl CartMethods for Cart {
       }
     }
     // Check totals
-    let mut _total_net = 0;
-    let mut _total_vat = 0;
-    let mut _total_gross = 0;
-    for item in &self.shopping_list {
-      _total_net += item.total_price_net;
-      _total_vat += item.total_price_vat;
-      _total_gross += item.total_price_gross;
-    }
-    for item in &self.upls_unique {
-      _total_net += item.get_price_net();
-      _total_vat += item.get_price_vat();
-      _total_gross += item.get_price_gross();
-    }
+    let _total_net = self.get_items_total_net()
+      - (self.get_commitment_discount_value() as f32 / 1.27).round() as u32
+      - (self.get_burned_points_balance() as f32 / 1.27).round() as u32;
+    let _total_gross = self.get_items_total_gross()
+      - self.get_commitment_discount_value()
+      - self.get_burned_points_balance();
+    let _total_vat = _total_gross - _total_net;
+
     if _total_net != self.total_net
       || _total_vat != self.total_vat
       || _total_gross != self.total_gross
