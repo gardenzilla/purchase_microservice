@@ -1,7 +1,7 @@
 // SKU to CART
 // SKU, Derived Product, Depreciated
 
-use chrono::prelude::*;
+use chrono::{prelude::*, Duration};
 use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -519,6 +519,7 @@ impl CartMethods for Cart {
   }
 
   fn set_document(&mut self, document_kind: DocumentKind) -> &Self {
+    // Set DocumentKind
     self.document_kind = document_kind;
     self
   }
@@ -528,6 +529,16 @@ impl CartMethods for Cart {
   }
 
   fn set_payment(&mut self, payment_kind: PaymentKind) -> &Self {
+    // Set payment duedate
+    match &payment_kind {
+      // Set 30 days if transfer
+      PaymentKind::Transfer => {
+        self.payment_duedate = Utc::today().and_hms(0, 0, 0) + Duration::days(30)
+      }
+      // Today if cash or card or else
+      _ => self.payment_duedate = Utc::today().and_hms(0, 0, 0),
+    }
+
     // TODO! Maybe some validation before set new value?
     self.payment_kind = payment_kind;
     self.calculate_totals();
