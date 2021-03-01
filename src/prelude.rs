@@ -114,6 +114,16 @@ impl From<crate::cart::Cart> for CartInfoObject {
   }
 }
 
+impl From<crate::cart::LoyaltyCard> for gzlib::proto::purchase::cart_object::LoyaltyCard {
+  fn from(f: crate::cart::LoyaltyCard) -> Self {
+    Self {
+      account_id: f.account_id.to_string(),
+      card_id: f.card_id,
+      loyalty_level: f.level.to_string(),
+    }
+  }
+}
+
 impl From<crate::cart::Cart> for CartObject {
   fn from(f: crate::cart::Cart) -> Self {
     Self {
@@ -242,18 +252,7 @@ impl From<crate::cart::Cart> for CartObject {
         Some(c) => c.commitment_percentage,
         None => 0,
       },
-      loyalty_card_id: match f.loyalty_card.clone() {
-        Some(lc) => lc.card_id,
-        None => "".to_string(),
-      },
-      loyalty_account_id: match f.loyalty_card.clone() {
-        Some(lc) => lc.account_id.to_string(),
-        None => "".to_string(),
-      },
-      loyalty_level: match f.loyalty_card.clone() {
-        Some(lc) => lc.level.to_string(),
-        None => "".to_string(),
-      },
+      loyalty_card: f.loyalty_card.clone().map(|l| l.into()),
       commitment_discount_amount_gross: f.commitment_discount_value,
       burned_loyalty_points: f.get_burned_points_balance(),
       burned_points: f
@@ -321,11 +320,11 @@ impl From<cart::Cart> for purchase::Purchase {
             } => purchase::ItemKind::DerivedProduct,
           },
           product_id: match &i.kind {
-            _ => 0,
             cart::UplKind::DerivedProduct {
               product_id,
               amount: _,
             } => *product_id,
+            _ => 0,
           },
           name: i.name.to_string(),
           piece: i.get_piece(),
@@ -448,6 +447,10 @@ impl From<cart::Cart> for purchase::Purchase {
             cart::LoyaltyLevel::L1 => purchase::LoyaltyLevel::L1,
             cart::LoyaltyLevel::L2 => purchase::LoyaltyLevel::L2,
           },
+          balance_opening: 0,
+          burned_points: 0,
+          earned_points: 0,
+          balance_closing: 0,
         }),
         None => None,
       },
@@ -511,6 +514,20 @@ impl From<purchase::Purchase> for PurchaseInfoObject {
       restored: f.restored.is_some(),
       created_by: f.created_by,
       created_at: f.created_at.to_rfc3339(),
+    }
+  }
+}
+
+impl From<crate::purchase::LoyaltyCard> for gzlib::proto::purchase::purchase_object::LoyaltyCard {
+  fn from(f: crate::purchase::LoyaltyCard) -> Self {
+    Self {
+      account_id: f.account_id.to_string(),
+      card_id: f.card_id,
+      loyalty_level: f.level.to_string(),
+      balance_opening: f.balance_opening,
+      burned_points: f.burned_points,
+      earned_points: f.earned_points,
+      balance_closing: f.balance_closing,
     }
   }
 }
@@ -594,18 +611,7 @@ impl From<purchase::Purchase> for PurchaseObject {
         None => 0,
       },
       commitment_discount_amount_gross: f.commitment_discount_value,
-      loyalty_card_id: match f.loyalty_card.clone() {
-        Some(lc) => lc.card_id,
-        None => "".to_string(),
-      },
-      loyalty_account_id: match f.loyalty_card.clone() {
-        Some(lc) => lc.account_id.to_string(),
-        None => "".to_string(),
-      },
-      loyalty_level: match f.loyalty_card.clone() {
-        Some(lc) => lc.level.to_string(),
-        None => "".to_string(),
-      },
+      loyalty_card: f.loyalty_card.map(|lc| lc.into()),
       burned_loyalty_points: f.burned_loyalty_points,
       burned_points: f
         .burned_points

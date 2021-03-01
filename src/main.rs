@@ -1,7 +1,7 @@
 use cart::CartMethods;
 use chrono::{DateTime, Utc};
 use gzlib::proto::{
-  loyalty::BurnRequest,
+  loyalty::{BurnRequest, PurchaseSummary},
   purchase::{
     purchase_server::*, AddCommitmentRequest, BurnPointsRequest, CartBulkRequest, CartByIdRequest,
     CartNewRequest, CartSetDocumentRequest, DocumentKind, LoyaltyCardAddRequest,
@@ -528,6 +528,28 @@ impl PurchaseService {
       .clone();
     Ok(res.into())
   }
+
+  async fn purchase_set_loyalty_summary(
+    &self,
+    r: PurchaseSummary,
+  ) -> ServiceResult<PurchaseObject> {
+    let res = self
+      .purchases
+      .lock()
+      .await
+      .find_id_mut(&str_to_uuid(&r.purchase_id, "A kért vásárlás ID hibás")?)?
+      .as_mut()
+      .unpack()
+      .set_loyalty_summary(
+        r.balance_opening,
+        r.burned_points,
+        r.earned_points,
+        r.balance_closing,
+      )
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+    Ok(res.into())
+  }
 }
 
 fn str_to_uuid(str: &str, error_msg: &str) -> ServiceResult<Uuid> {
@@ -806,6 +828,16 @@ impl Purchase for PurchaseService {
     request: Request<proto::purchase::PurchaseSetInvoiceIdRequest>,
   ) -> Result<Response<PurchaseObject>, Status> {
     let res = self.purchase_set_invoice_id(request.into_inner()).await?;
+    Ok(Response::new(res))
+  }
+
+  async fn purchase_set_loyalty_summary(
+    &self,
+    request: Request<proto::loyalty::PurchaseSummary>,
+  ) -> Result<Response<PurchaseObject>, Status> {
+    let res = self
+      .purchase_set_loyalty_summary(request.into_inner())
+      .await?;
     Ok(Response::new(res))
   }
 }

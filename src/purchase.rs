@@ -7,7 +7,17 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub trait PurchaseExt {
+  /// Set related invoice ID
   fn set_invoice_id(&mut self, invoice_id: String) -> Result<&Self, String>;
+  /// Set loyalty summary info
+  /// given by the loyalty service
+  fn set_loyalty_summary(
+    &mut self,
+    balance_opening: i32,
+    burned_points: i32,
+    earned_points: i32,
+    balance_closing: i32,
+  ) -> Result<&Self, String>;
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -49,6 +59,37 @@ impl PurchaseExt for Purchase {
         self.invoice = Some(invoice_id);
         Ok(self)
       }
+    }
+  }
+
+  fn set_loyalty_summary(
+    &mut self,
+    balance_opening: i32,
+    burned_points: i32,
+    earned_points: i32,
+    balance_closing: i32,
+  ) -> Result<&Self, String> {
+    match &mut self.loyalty_card {
+      Some(loyalty) => {
+        // Check if burned points are ok
+        if self.burned_loyalty_points as i32 != burned_points {
+          return Err(
+            "A vásárláshoz rendelt felhasznált pontok összege nem egyezik meg az
+          összefoglaló szerinti felhasznált pontok összegével."
+              .to_string(),
+          );
+        }
+        loyalty.balance_opening = balance_opening;
+        loyalty.burned_points = burned_points;
+        loyalty.earned_points = earned_points;
+        loyalty.balance_closing = balance_closing;
+        Ok(self)
+      }
+      None => Err(
+        "A vásárláshoz nem tartozik törzsvásárlói kártya,
+        így nem lehet hozzá adatokat adni."
+          .to_string(),
+      ),
     }
   }
 }
@@ -289,6 +330,10 @@ pub struct LoyaltyCard {
   pub account_id: Uuid,    // Loyalty account ID
   pub card_id: String,     // Loyalty card ID
   pub level: LoyaltyLevel, // L1 | L2
+  pub balance_opening: i32,
+  pub burned_points: i32,
+  pub earned_points: i32,
+  pub balance_closing: i32,
 }
 
 impl Default for LoyaltyCard {
@@ -297,6 +342,10 @@ impl Default for LoyaltyCard {
       account_id: Uuid::default(),
       card_id: String::default(),
       level: LoyaltyLevel::default(),
+      balance_opening: 0,
+      burned_points: 0,
+      earned_points: 0,
+      balance_closing: 0,
     }
   }
 }
