@@ -427,7 +427,10 @@ impl From<cart::Cart> for purchase::Purchase {
       owner_uid: f.owner_uid,
       store_id: f.store_id,
       date_completion: Utc::today().and_hms(0, 0, 0),
-      payment_duedate: Utc::today().and_hms(0, 0, 0), // TODO! refact to manage duedate for inv.
+      payment_duedate: match f.payment_duedate > Utc::now() {
+        true => f.payment_duedate,
+        false => Utc::today().and_hms(0, 0, 0),
+      },
       restored: None,
       created_by: f.created_by,
       created_at: f.created_at,
