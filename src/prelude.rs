@@ -151,7 +151,7 @@ impl From<crate::cart::Cart> for CartObject {
           name: i.name.clone(),
           piece: i.piece,
           retail_price_net: i.unit_price_net,
-          vat: i.vat.clone(),
+          vat: i.vat.to_string(),
           retail_price_gross: i.unit_price_gross,
           total_retail_price_net: i.total_price_net,
           total_retail_price_gross: i.total_price_gross,
@@ -176,7 +176,7 @@ impl From<crate::cart::Cart> for CartObject {
           }),
           name: uio.name.clone(),
           retail_net_price: uio.retail_net_price,
-          vat: uio.vat.clone(),
+          vat: uio.vat.to_string(),
           retail_gross_price: uio.retail_gross_price,
           procurement_net_price: uio.procurement_net_price,
           best_before: match uio.best_before {
@@ -205,7 +205,7 @@ impl From<crate::cart::Cart> for CartObject {
           }),
           name: uio.name.clone(),
           retail_net_price: uio.retail_net_price,
-          vat: uio.vat.clone(),
+          vat: uio.vat.to_string(),
           retail_gross_price: uio.retail_gross_price,
           procurement_net_price: uio.procurement_net_price,
           best_before: match uio.best_before {

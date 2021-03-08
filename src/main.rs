@@ -156,7 +156,7 @@ impl PurchaseService {
         r.sku_id,
         r.piece,
         r.name,
-        r.vat,
+        cart::VAT::from_str(&r.vat).map_err(|e| ServiceError::bad_request(&e))?,
         r.retail_price_net,
         r.retail_price_gross,
       )
@@ -200,7 +200,7 @@ impl PurchaseService {
       },
       name: u.name,
       retail_net_price: u.retail_net_price,
-      vat: u.vat,
+      vat: cart::VAT::from_str(&u.vat).map_err(|e| ServiceError::bad_request(&e))?,
       retail_gross_price: u.retail_gross_price,
       procurement_net_price: u.procurement_net_price,
       best_before: match u.best_before.len() > 0 {

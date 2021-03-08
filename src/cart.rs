@@ -1,6 +1,8 @@
 // SKU to CART
 // SKU, Derived Product, Depreciated
 
+use std::ops::Mul;
+
 use chrono::{prelude::*, Duration};
 use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
@@ -20,7 +22,7 @@ where
     sku: u32,
     piece: u32,
     name: String,
-    vat: String,
+    vat: VAT,
     unit_retail_price_net: u32,
     unit_retail_price_gross: u32,
   ) -> &Self;
@@ -88,6 +90,68 @@ where
   fn get_items_total_net(&self) -> u32;
   fn get_items_total_gross(&self) -> u32;
   fn get_items_total_vat(&self) -> u32;
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Copy)]
+pub enum VAT {
+  AAM,
+  FAD,
+  TAM,
+  _5,
+  _18,
+  _27,
+}
+
+impl Default for VAT {
+  fn default() -> Self {
+    VAT::_27
+  }
+}
+
+impl VAT {
+  pub fn from_str(str: &str) -> Result<VAT, String> {
+    match str {
+      "AAM" => Ok(VAT::AAM),
+      "aam" => Ok(VAT::AAM),
+      "FAD" => Ok(VAT::FAD),
+      "fad" => Ok(VAT::FAD),
+      "TAM" => Ok(VAT::TAM),
+      "tam" => Ok(VAT::TAM),
+      "5" => Ok(VAT::_5),
+      "18" => Ok(VAT::_18),
+      "27" => Ok(VAT::_27),
+      _ => Err("Nem megfelelő Áfa formátum! 5, 18, 27, AAM, TAM, FAD".into()),
+    }
+  }
+}
+
+impl ToString for VAT {
+  fn to_string(&self) -> String {
+    match self {
+      VAT::AAM => "AAM".to_string(),
+      VAT::FAD => "FAD".to_string(),
+      VAT::TAM => "TAM".to_string(),
+      VAT::_5 => "5".to_string(),
+      VAT::_18 => "18".to_string(),
+      VAT::_27 => "27".to_string(),
+    }
+  }
+}
+
+impl Mul<VAT> for u32 {
+  type Output = u32;
+
+  fn mul(self, rhs: VAT) -> Self::Output {
+    let res = match rhs {
+      VAT::AAM => self as f32 * 1.0,
+      VAT::FAD => self as f32 * 1.0,
+      VAT::TAM => self as f32 * 1.0,
+      VAT::_5 => self as f32 * 1.05,
+      VAT::_18 => self as f32 * 1.18,
+      VAT::_27 => self as f32 * 1.27,
+    };
+    res.round() as u32
+  }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -253,7 +317,7 @@ pub struct ListItem {
   pub sku: u32,
   pub name: String,
   pub piece: u32,
-  pub vat: String,
+  pub vat: VAT,
   pub unit_price_net: u32,
   pub unit_price_vat: u32,
   pub unit_price_gross: u32,
@@ -267,12 +331,12 @@ impl ListItem {
     sku: u32,
     name: String,
     piece: u32,
-    vat: String,
+    vat: VAT,
     unit_price_net: u32,
     unit_price_gross: u32,
   ) -> Self {
     let total_net = unit_price_net * piece;
-    let total_gross = unit_price_gross * piece;
+    let total_gross = total_net * vat;
     Self {
       sku,
       name,
@@ -293,7 +357,7 @@ impl ListItem {
     // Update total net
     self.total_price_net = self.unit_price_net * piece;
     // Update total gross
-    self.total_price_gross = self.unit_price_gross * piece;
+    self.total_price_gross = self.total_price_net * self.vat;
     // Update total VAT
     self.total_price_vat = self.total_price_gross - self.total_price_net;
     // Return self ref
@@ -316,7 +380,7 @@ impl Default for ListItem {
       sku: 0,
       name: String::new(),
       piece: 0,
-      vat: String::new(),
+      vat: VAT::default(),
       unit_price_net: 0,
       unit_price_vat: 0,
       unit_price_gross: 0,
@@ -374,7 +438,7 @@ impl CartMethods for Cart {
     sku: u32,
     piece: u32,
     name: String,
-    vat: String,
+    vat: VAT,
     unit_retail_price_net: u32,
     unit_retail_price_gross: u32,
   ) -> &Self {
@@ -907,7 +971,7 @@ pub struct UplInfoObject {
   pub kind: UplKind,
   pub name: String,
   pub retail_net_price: u32,
-  pub vat: String,
+  pub vat: VAT,
   pub retail_gross_price: u32,
   pub procurement_net_price: u32,
   pub best_before: Option<DateTime<Utc>>,
@@ -921,7 +985,7 @@ impl Default for UplInfoObject {
       kind: UplKind::default(),
       name: String::default(),
       retail_net_price: 0,
-      vat: String::default(),
+      vat: VAT::default(),
       retail_gross_price: 0,
       procurement_net_price: 0,
       best_before: None,
