@@ -23,6 +23,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::{env, str::FromStr};
 use tokio::sync::{oneshot, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
 use uuid::Uuid;
 
@@ -582,7 +583,7 @@ impl Purchase for PurchaseService {
     Ok(Response::new(res))
   }
 
-  type CartGetInfoBulkStream = tokio::sync::mpsc::Receiver<Result<CartInfoObject, Status>>;
+  type CartGetInfoBulkStream = ReceiverStream<Result<CartInfoObject, Status>>;
 
   async fn cart_get_info_bulk(
     &self,
@@ -602,7 +603,7 @@ impl Purchase for PurchaseService {
     });
 
     // Send back the receiver
-    Ok(Response::new(rx))
+    Ok(Response::new(ReceiverStream::new(rx)))
   }
 
   async fn cart_add_customer(
@@ -732,7 +733,7 @@ impl Purchase for PurchaseService {
     Ok(Response::new(PurchaseIds { purchase_ids }))
   }
 
-  type PurchaseGetInfoBulkStream = tokio::sync::mpsc::Receiver<Result<PurchaseInfoObject, Status>>;
+  type PurchaseGetInfoBulkStream = ReceiverStream<Result<PurchaseInfoObject, Status>>;
 
   async fn purchase_get_info_bulk(
     &self,
@@ -752,7 +753,7 @@ impl Purchase for PurchaseService {
     });
 
     // Send back the receiver
-    Ok(Response::new(rx))
+    Ok(Response::new(ReceiverStream::new(rx)))
   }
 
   async fn puchase_create_invoice(
