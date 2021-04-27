@@ -677,8 +677,8 @@ impl CartMethods for Cart {
     }
     // Check totals
     let _total_net = self.get_items_total_net()
-      - (self.get_commitment_discount_value() as f32 / 1.27).round() as u32
-      - (self.get_burned_points_balance() as f32 / 1.27).round() as u32;
+      - ((self.get_commitment_discount_value() + self.get_burned_points_balance()) as f32 / 1.27)
+        .round() as u32;
     let _total_gross = self.get_items_total_gross()
       - self.get_commitment_discount_value()
       - self.get_burned_points_balance();
